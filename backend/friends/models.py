@@ -19,6 +19,11 @@ class Friend(models.Model):
 
     class Meta:
         unique_together = ('user', 'friend')
+        indexes = [
+            # "Who are X's friends?" checks both directions of the pair.
+            models.Index(fields=["user", "status"], name="friend_user_status_idx"),
+            models.Index(fields=["friend", "status"], name="friend_friend_status_idx"),
+        ]
     
     def __str__(self):
         return f"{self.user.firstname} sent a friend request to {self.friend.firstname}"

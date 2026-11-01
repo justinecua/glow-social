@@ -189,10 +189,18 @@ def delete_user_account(user):
     """
     account = Account.objects.filter(auth_user=user).first()
     file_ids = _imagekit_file_ids(account) if account else []
+    user_pk = user.pk
 
     with transaction.atomic():
         if account:
             account.delete()
         user.delete()
+
+    # Forget the cached user -> account id (see auth_utils.account_id_for_user).
+    from django.core.cache import cache
+    try:
+        cache.delete(f"account_id_for_user:{user_pk}")
+    except Exception:
+        pass
 
     _delete_imagekit_files(file_ids)

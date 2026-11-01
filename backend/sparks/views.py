@@ -75,3 +75,10 @@ class WarmSpark(APIView):
             return Response({"warms": services.warm(spark, _me(request))})
         except SparkError as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, spark_id):
+        """Unspark: remove your reaction."""
+        spark = _visible(request, spark_id)
+        if not spark:
+            return Response({"detail": "Spark not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response({"warms": services.unwarm(spark, _me(request))})

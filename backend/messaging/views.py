@@ -4,15 +4,29 @@ from rest_framework.views import APIView
 
 from accounts.auth_utils import current_account_id
 
-from . import services
+from .queries import (
+    ChatError,
+    addMembers,
+    deleteMessage,
+    editMessage,
+    getConversation,
+    leaveConversation,
+    listConversations,
+    listMessages,
+    markRead,
+    renameGroup,
+    sendMessage,
+    startConversation,
+    unreadTotal,
+)
 
 
-def _run(fn, *args, ok_status=status.HTTP_200_OK):
+def respond(query, *args, ok_status=status.HTTP_200_OK):
+    """Run a query and send its result, or its error message and status."""
     try:
-        result = fn(*args)
-    except services.ChatError as e:
-        return Response({"detail": str(e)}, status=e.status)
-    return Response(result, status=ok_status)
+        return Response(query(*args), status=ok_status)
+    except ChatError as error:
+        return Response({"detail": str(error)}, status=error.status)
 
 
 class Conversations(APIView):
@@ -20,17 +34,17 @@ class Conversations(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request):
-        return Response(services.list_conversations(current_account_id(request)))
+        return respond(listConversations, current_account_id(request))
 
     def post(self, request):
         try:
-            data, created = services.start_conversation(
+            data, created = startConversation(
                 current_account_id(request),
                 request.data.get("member_ids"),
                 request.data.get("title", ""),
             )
-        except services.ChatError as e:
-            return Response({"detail": str(e)}, status=e.status)
+        except ChatError as error:
+            return Response({"detail": str(error)}, status=error.status)
         return Response(data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
@@ -39,11 +53,11 @@ class ConversationDetail(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request, conversation_id):
-        return _run(services.get_conversation, conversation_id, current_account_id(request))
+        return respond(getConversation, conversation_id, current_account_id(request))
 
     def patch(self, request, conversation_id):
-        return _run(services.rename_group, conversation_id, current_account_id(request),
-                    request.data.get("title", ""))
+        return respond(renameGroup, conversation_id, current_account_id(request),
+                       request.data.get("title", ""))
 
 
 class ConversationMessages(APIView):
@@ -52,22 +66,19 @@ class ConversationMessages(APIView):
 
     def get(self, request, conversation_id):
         before = request.query_params.get("before")
-        try:
-            before = int(before) if before else None
-        except ValueError:
-            before = None
-        return _run(services.list_messages, conversation_id, current_account_id(request), before)
+        before = int(before) if before and before.isdigit() else None
+        return respond(listMessages, conversation_id, current_account_id(request), before)
 
     def post(self, request, conversation_id):
-        return _run(services.send_message, conversation_id, current_account_id(request),
-                    request.data.get("body"), ok_status=status.HTTP_201_CREATED)
+        return respond(sendMessage, conversation_id, current_account_id(request),
+                       request.data.get("body"), ok_status=status.HTTP_201_CREATED)
 
 
 class ConversationRead(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def post(self, request, conversation_id):
-        return _run(services.mark_read, conversation_id, current_account_id(request))
+        return respond(markRead, conversation_id, current_account_id(request))
 
 
 class ConversationMembers(APIView):
@@ -75,11 +86,11 @@ class ConversationMembers(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def post(self, request, conversation_id):
-        return _run(services.add_members, conversation_id, current_account_id(request),
-                    request.data.get("member_ids"))
+        return respond(addMembers, conversation_id, current_account_id(request),
+                       request.data.get("member_ids"))
 
     def delete(self, request, conversation_id):
-        return _run(services.leave, conversation_id, current_account_id(request))
+        return respond(leaveConversation, conversation_id, current_account_id(request))
 
 
 class MessageDetail(APIView):
@@ -87,15 +98,15 @@ class MessageDetail(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def patch(self, request, message_id):
-        return _run(services.edit_message, message_id, current_account_id(request),
-                    request.data.get("body"))
+        return respond(editMessage, message_id, current_account_id(request),
+                       request.data.get("body"))
 
     def delete(self, request, message_id):
-        return _run(services.delete_message, message_id, current_account_id(request))
+        return respond(deleteMessage, message_id, current_account_id(request))
 
 
 class UnreadCount(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request):
-        return Response({"unread": services.unread_total(current_account_id(request))})
+        return Response({"unread": unreadTotal(current_account_id(request))})

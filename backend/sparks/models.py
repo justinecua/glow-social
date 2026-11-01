@@ -26,6 +26,8 @@ class Spark(models.Model):
 
     class Meta:
         ordering = ["created_at"]
+        # The timeline asks for "unexpired sparks by these authors".
+        indexes = [models.Index(fields=["account", "expires_at"], name="spark_author_expiry")]
 
     def __str__(self):
         return f"Spark {self.id} by {self.account_id}"

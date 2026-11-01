@@ -125,21 +125,25 @@ class GlobalConsumer(AsyncWebsocketConsumer):
 
     # ------------------------------------------------------------ messaging
     async def relay_typing(self, conversation_id):
-        from messaging.services import can_type_in, _member_ids
+        from messaging.queries import canTypeIn, memberIds
 
         try:
             conversation_id = int(conversation_id)
         except (TypeError, ValueError):
             return
-        if not await sync_to_async(can_type_in)(conversation_id, self.user_id):
+        if not await sync_to_async(canTypeIn)(conversation_id, self.user_id):
             return
-        for uid in await sync_to_async(_member_ids)(conversation_id):
+        for uid in await sync_to_async(memberIds)(conversation_id):
             if uid != self.user_id:
                 await self.channel_layer.group_send(
                     f"user_{uid}",
                     {"type": "chat_typing", "conversation_id": conversation_id,
                      "account_id": self.user_id},
                 )
+
+    async def sparks_updated(self, event):
+        """A friend posted or deleted a spark: the app refetches Today."""
+        await self.send(text_data=json.dumps({"type": "sparks_updated"}))
 
     async def chat_message(self, event):
         await self.send(text_data=json.dumps(event))

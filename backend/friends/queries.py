@@ -25,8 +25,6 @@ def getTotalFriends(account_id):
     finally:        
         if cursor:
             cursor.close()
-        if connection:
-            connection.close()
 
 def getFriendList(account_id):
     try:
@@ -46,8 +44,6 @@ def getFriendList(account_id):
     finally:        
         if cursor:
             cursor.close()
-        if connection:
-            connection.close()
 
 def _display_name(cursor, account_id):
     """First + last name, else the username: never just "Someone"."""
@@ -313,8 +309,6 @@ def checkUserFriendRequest(friend_id, accId):
     finally:
         if cursor:
             cursor.close()
-        if connection:
-            connection.close()
 
 
 def myFriends(account_id):
@@ -389,6 +383,7 @@ def peopleYouMayKnow(account_id, limit=5):
             JOIN glow.glow.accounts_account a ON a.id = fof.id
             JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
             WHERE u.is_active
+              AND NOT COALESCE(a.is_bot, FALSE)  -- bots aren't people you know
               AND fof.id <> %(me)s
               AND fof.id NOT IN (SELECT id FROM known)
             GROUP BY a.id, u.username, a.firstname, a.lastname, a.profile_photo
@@ -410,6 +405,7 @@ def peopleYouMayKnow(account_id, limit=5):
                 JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
                 LEFT JOIN glow.glow.posts_post p ON p.account_id = a.id
                 WHERE u.is_active
+                  AND NOT COALESCE(a.is_bot, FALSE)
                   AND NOT (a.id = ANY(%(skip)s))
                   AND a.id NOT IN (
                       SELECT CASE WHEN user_id = %(me)s THEN friend_id ELSE user_id END

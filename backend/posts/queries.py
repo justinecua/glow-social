@@ -103,8 +103,6 @@ def getPosts(offset=0, limit=7, request=None):
     finally:
         if cursor:
             cursor.close()
-        if connection:
-            connection.close()
 
 
 def getPostsByUser(account_id, request=None):
@@ -173,8 +171,6 @@ def getPostsByUser(account_id, request=None):
     finally:
         if cursor:
             cursor.close()
-        if connection:
-            connection.close()
 
 
 def create_post(accID, audience, caption, photos, taglist, request=None):
@@ -268,8 +264,6 @@ def create_post(accID, audience, caption, photos, taglist, request=None):
     finally:
         if cursor:
             cursor.close()
-        if connection:
-            connection.close()
 
 
 
@@ -282,17 +276,14 @@ def sendGlow(accID, postId):
         connection = connections["default"]
         cursor = connection.cursor()
 
-        # Skip the insert if this account already glowed this post.
+        # One glow per account per post. The unique constraint makes this
+        # safe under double-clicks/retries racing each other.
         glow_query = """
             INSERT INTO glow.glow.interactions_glow (account_id, post_id, "timestamp")
-            SELECT %s, %s, %s
-            WHERE NOT EXISTS (
-                SELECT 1 FROM glow.glow.interactions_glow
-                WHERE account_id = %s AND post_id = %s
-            )
-            returning id
+            VALUES (%s, %s, %s)
+            ON CONFLICT ON CONSTRAINT glow_one_per_account_post DO NOTHING
         """
-        cursor.execute(glow_query, (accID, postId, now, accID, postId))
+        cursor.execute(glow_query, (accID, postId, now))
 
         connection.commit()
         return {"status": "success", "message": "Post glowed successfully"}
@@ -306,8 +297,6 @@ def sendGlow(accID, postId):
     finally:
         if cursor:
             cursor.close()
-        if connection:
-            connection.close()
 
 
 def sendUnglow(accID, postId):
@@ -337,6 +326,4 @@ def sendUnglow(accID, postId):
     finally:
         if cursor:
             cursor.close()
-        if connection:
-            connection.close()
 
