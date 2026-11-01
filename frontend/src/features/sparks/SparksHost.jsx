@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useGetSparksQuery } from "@/redux/services/sparks";
+import { useDispatch } from "react-redux";
+import { sparksApi, useGetSparksQuery } from "@/redux/services/sparks";
 import { useStoredUser } from "@/utils/auth";
 import SparkComposer from "./SparkComposer";
 import SparkViewer from "./SparkViewer";
@@ -10,10 +11,23 @@ const SparksHost = () => {
   const user = useStoredUser();
   const { data, refetch } = useGetSparksQuery(undefined, {
     skip: !user,
-    pollingInterval: 3 * 60 * 1000, // pick up friends' new sparks
+    // Friends' new sparks arrive instantly over the WebSocket (below);
+    // this slow poll is only a fallback if the connection drops.
+    pollingInterval: 10 * 60 * 1000,
   });
   const [viewer, setViewer] = useState(null);
   const [composerOpen, setComposerOpen] = useState(false);
+  const dispatch = useDispatch();
+
+  // A friend posted or deleted a spark: refetch Today.
+  useEffect(() => {
+    const onEvent = (e) => {
+      if (e.detail?.type === "sparks_updated")
+        dispatch(sparksApi.util.invalidateTags(["Sparks"]));
+    };
+    window.addEventListener("glow:ws", onEvent);
+    return () => window.removeEventListener("glow:ws", onEvent);
+  }, [dispatch]);
 
   useEffect(() => {
     const onOpen = async (e) => {
@@ -25,10 +39,12 @@ const SparksHost = () => {
       if (sparkId)
         start = Math.max(
           0,
-          list.findIndex((s) => s.id === sparkId)
+          list.findIndex((s) => s.id === sparkId),
         );
       else if (authorId) {
-        const theirs = list.map((s, i) => [s, i]).filter(([s]) => s.author.id === authorId);
+        const theirs = list
+          .map((s, i) => [s, i])
+          .filter(([s]) => s.author.id === authorId);
         if (!theirs.length) return;
         start = (theirs.find(([s]) => !s.seen) ?? theirs[0])[1];
       }

@@ -1,16 +1,23 @@
-import { useSparkRing } from "@/features/sparks/SparkRing";
-import { openSparks } from "@/redux/services/sparks";
-import { CardContent } from "@/components/ui/card";
 import { useState } from "react";
-import NoProfile from "@/assets/images/No-Profile.jpg";
 import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
+import NoProfile from "@/assets/images/No-Profile.jpg";
 import { ModeToggle } from "@/components/themes/mode-toggle";
-import { Button } from "@/components/ui/button";
+import { useSparkRing } from "@/features/sparks/SparkRing";
+import { openSparks } from "@/redux/services/sparks";
 import { accountPhoto } from "@/features/posts/botAccounts";
 
+// Shown when there's no cover photo: a soft brand glow instead of a flat grey box.
+const EMPTY_COVER =
+  "radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--button-color-bg) 45%, transparent) 0%, transparent 55%)," +
+  "radial-gradient(120% 140% at 100% 100%, color-mix(in srgb, #ff5fa2 30%, transparent) 0%, transparent 55%)," +
+  "var(--photo-bg)";
+
 const ProfileCover = ({ item }) => {
-  // Glowing border when they have sparks today (fades as it ages).
+  const [imgError, setImgError] = useState(false);
+  const [coverError, setCoverError] = useState(false);
+
+  // Glowing ring when they have sparks today (fades as it ages).
   const ring = useSparkRing(item?.id);
   const ringColor = ring?.close ? "245,165,36" : "120,110,255";
   const ringStyle = ring
@@ -21,51 +28,55 @@ const ProfileCover = ({ item }) => {
         cursor: "pointer",
       }
     : undefined;
-  const [imgError, setImgError] = useState(false);
-  const [coverError, setCoverError] = useState(false);
+
+  const hasCover = item?.cover_photo && !coverError;
+  const photo = accountPhoto(item);
 
   return (
-    <CardContent className="p-0 w-full relative">
-      <Link to={`/`} className="absolute z-2 right-10 top-2">
-        <Button variant="outline" size="icon" className="mr-3 cursor-pointer">
-          <ArrowLeft className="h-[1.2rem] w-[1.2rem]" />
-        </Button>
-      </Link>
-
-      <div className="absolute z-2 right-0 top-2">
-        <ModeToggle />
-      </div>
-
-      <div className="relative w-full h-42 sm:h-44 md:h-50 lg:h-60 xl:h-70 rounded-lg overflow-hidden">
-        {!item?.cover_photo || coverError ? (
-          <div className="w-full h-full bg-[var(--button-bg-color)]"></div>
-        ) : (
+    <div className="relative">
+      {/* Cover */}
+      <div
+        className="relative h-36 w-full overflow-hidden rounded-xl sm:h-44 md:h-52"
+        style={hasCover ? undefined : { background: EMPTY_COVER }}
+      >
+        {hasCover && (
           <img
             src={item.cover_photo}
-            alt="cover"
-            className="w-full h-full object-cover"
+            alt=""
+            className="h-full w-full object-cover"
             onError={() => setCoverError(true)}
           />
         )}
-
-        {/* <div className="absolute bottom-0 left-0 w-full h-30 fade-overlay" /> */}
+        <div className="absolute inset-x-0 top-0 flex items-center justify-between p-3">
+          <Link
+            to="/"
+            aria-label="Back to home"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm transition-colors hover:bg-black/55"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <div className="[&_button]:mr-0 [&_button]:rounded-full [&_button]:border-0 [&_button]:bg-black/35 [&_button]:text-white [&_button]:backdrop-blur-sm [&_button:hover]:bg-black/55">
+            <ModeToggle />
+          </div>
+        </div>
       </div>
 
+      {/* Avatar, overlapping the cover */}
       <div
-        className="border-8 border-solid border-[var(--home-card)] absolute -bottom-[5.8rem] lg:left-6 w-30 h-30 md:w-40 md:h-40 sm:w-38 sm:h-38 rounded-full overflow-hidden"
+        className="absolute -bottom-12 left-4 h-24 w-24 overflow-hidden rounded-full border-4 border-[var(--home-card)] bg-[var(--photo-bg)] sm:-bottom-14 sm:left-6 sm:h-28 sm:w-28"
         style={ringStyle}
         role={ring ? "button" : undefined}
         aria-label={ring ? "View sparks" : undefined}
         onClick={ring ? () => openSparks({ authorId: Number(item.id) }) : undefined}
       >
         <img
-          src={imgError || !accountPhoto(item) ? NoProfile : accountPhoto(item)}
-          alt="profile"
-          className="w-full h-full object-cover"
+          src={imgError || !photo ? NoProfile : photo}
+          alt={item?.username ?? ""}
+          className="h-full w-full object-cover"
           onError={() => setImgError(true)}
         />
       </div>
-    </CardContent>
+    </div>
   );
 };
 

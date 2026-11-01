@@ -1,4 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
+// eslint-disable-next-line no-unused-vars -- used as <motion.*> in JSX
+import { motion } from "framer-motion";
 import { useAuthChecking, useStoredUser } from "@/utils/auth";
 import { Skeleton } from "@/components/ui/skeleton";
 import UnreadBadge from "@/features/messages/UnreadBadge";
@@ -47,12 +49,20 @@ const MobileNav = () => {
               <Link
                 to={to}
                 aria-current={active ? "page" : undefined}
-                className={`flex flex-col items-center gap-0.5 py-2 text-[10px] transition-colors ${
+                className={`relative flex flex-col items-center gap-0.5 py-2 text-[10px] transition-[color,transform] duration-150 ease-out active:scale-90 ${
                   active
                     ? "text-[var(--title-color)] font-semibold"
                     : "text-[var(--color-subtitle)] hover:text-[var(--title-color)]"
                 }`}
               >
+                {active && (
+                  // Shared layoutId: the pill slides between tabs.
+                  <motion.span
+                    layoutId="mobile-nav-active"
+                    className="absolute top-0 h-0.5 w-8 rounded-full bg-[var(--title-color)]"
+                    transition={{ type: "spring", stiffness: 500, damping: 38 }}
+                  />
+                )}
                 <span className="relative">
                   <Icon className="h-5 w-5" />
                   {user && to === "/messages" && (

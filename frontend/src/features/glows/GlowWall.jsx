@@ -7,6 +7,7 @@ import { useStoredUser } from "@/utils/auth";
 import { Avatar } from "@/features/discover/components/PersonRow";
 import GlowChainDialog from "./GlowChainDialog";
 import SendGlowDialog from "./SendGlowDialog";
+import { useKudosSent } from "./useKudosSent";
 import { formatCount } from "@/lib/formatCount";
 
 /** Profile tab: all the nice things people said about this person. */
@@ -17,16 +18,17 @@ const GlowWall = ({ profile }) => {
   const { data, isLoading } = useGetGlowWallQuery({ account_id: profile?.id });
   const [chainNote, setChainNote] = useState(null);
   const [sendOpen, setSendOpen] = useState(false);
+  const kudosSent = useKudosSent(isOwn ? null : profile?.id);
 
   const name = profile?.firstname || profile?.username;
   const notes = data?.notes ?? [];
 
   return (
     <div className="mt-5">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[color-mix(in_srgb,var(--button-color-bg)_8%,transparent)] px-5 py-4 dark:bg-[color-mix(in_srgb,var(--button-color-bg)_18%,transparent)]">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-1">
         <div>
-          <p className="flex items-center gap-2 font-semibold">
-            {formatCount(data?.count)} kudos received
+          <p className="font-semibold">
+            {formatCount(data?.count ?? 0)} kudos received
           </p>
           <p className="text-sm text-[var(--color-subtitle)]">
             {isOwn
@@ -37,9 +39,13 @@ const GlowWall = ({ profile }) => {
         {me && !isOwn && (
           <Button
             onClick={() => setSendOpen(true)}
+            disabled={kudosSent}
+            title={
+              kudosSent ? "You can send them kudos again tomorrow" : undefined
+            }
             className="cursor-pointer bg-[var(--button-color-bg)] text-white hover:opacity-90"
           >
-            Send kudos
+            {kudosSent ? "Kudos sent today" : "Send kudos"}
           </Button>
         )}
         {!me && (
@@ -62,7 +68,7 @@ const GlowWall = ({ profile }) => {
           {notes.map((n) => (
             <figure
               key={n.id}
-              className="mb-4 break-inside-avoid rounded-xl border bg-[var(--background)] p-4"
+              className="mb-4 break-inside-avoid rounded-xl border bg-[var(--background)] p-4 transition-colors hover:border-[color-mix(in_srgb,var(--button-color-bg)_45%,transparent)]"
             >
               <blockquote className="text-[15px] leading-relaxed [overflow-wrap:anywhere]">
                 “{n.message}”
@@ -77,7 +83,9 @@ const GlowWall = ({ profile }) => {
                     alt={n.sender.username}
                     className="h-7 w-7"
                   />
-                  <span className="truncate font-semibold">@{n.sender.username}</span>
+                  <span className="truncate font-semibold">
+                    @{n.sender.username}
+                  </span>
                   <span className="shrink-0 text-[var(--color-subtitle)]">
                     {String(n.created_at).replace(/^•\s*/, "")}
                   </span>
@@ -100,7 +108,13 @@ const GlowWall = ({ profile }) => {
       )}
 
       <GlowChainDialog noteId={chainNote} onClose={() => setChainNote(null)} />
-      {profile && <SendGlowDialog open={sendOpen} onOpenChange={setSendOpen} recipient={profile} />}
+      {profile && (
+        <SendGlowDialog
+          open={sendOpen}
+          onOpenChange={setSendOpen}
+          recipient={profile}
+        />
+      )}
     </div>
   );
 };

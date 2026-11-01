@@ -28,7 +28,9 @@ const WeeklyGlows = () => {
           <Sun className="h-4 w-4" />
         </span>
         <div>
-          <h2 className="text-base font-semibold leading-tight">Kudos this week</h2>
+          <h2 className="text-base font-semibold leading-tight">
+            Kudos this week
+          </h2>
           <p className="text-xs text-[var(--color-subtitle)]">
             Who's spreading the most appreciation
           </p>
@@ -45,7 +47,9 @@ const WeeklyGlows = () => {
               <span className="text-3xl font-bold text-[var(--button-color-bg)]">
                 {chain.length}
               </span>
-              <span className="text-sm text-[var(--color-subtitle)]">kudos passed on</span>
+              <span className="text-sm text-[var(--color-subtitle)]">
+                kudos passed on
+              </span>
             </p>
             <div className="mt-3">
               <ChainPeople people={chain.people} />
@@ -72,7 +76,11 @@ const WeeklyGlows = () => {
                     >
                       {i + 1}
                     </span>
-                    <Avatar src={p.profile_photo} alt={p.username} className="h-9 w-9" />
+                    <Avatar
+                      src={p.profile_photo}
+                      alt={p.username}
+                      className="h-9 w-9"
+                    />
                     <span className="min-w-0 flex-1 truncate text-sm font-semibold">
                       @{p.username}
                     </span>

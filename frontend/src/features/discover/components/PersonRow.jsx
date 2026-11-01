@@ -1,11 +1,13 @@
 import { Link } from "react-router-dom";
 import NoProfile from "@/assets/images/No-Profile.jpg";
+import { botLogo } from "@/features/posts/botAccounts";
 
 const fullName = (p) => [p.firstname, p.lastname].filter(Boolean).join(" ").trim();
 
+/** Profile photo (`alt` is the username; Glow's bots get their logo). */
 export const Avatar = ({ src, alt, className = "h-10 w-10" }) => (
   <img
-    src={src || NoProfile}
+    src={botLogo(alt) || src || NoProfile}
     alt={alt}
     loading="lazy"
     decoding="async"

@@ -20,12 +20,16 @@ const ProfileTabs = ({ item, posts, allPhotos }) => {
   const setTab = (t) => setParams(t === "posts" ? {} : { tab: t }, { replace: true });
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(null);
 
-  const totalPosts = posts.length > 1 ? "Posts" : "Post";
-  const totalPhotos = allPhotos.length > 1 ? "Photos" : "Photo";
-  const countThoughts = posts.filter((post) => !post.photos || post.photos.length === 0).length;
-
-  const totalThoughts = countThoughts > 1 ? "Thoughts" : "Thought";
+  // Text-only posts.
   const thoughts = posts.filter((post) => !post.photos || post.photos.length === 0);
+
+  const TABS = [
+    { value: "posts", label: "Posts", count: posts.length },
+    { value: "photos", label: "Photos", count: allPhotos.length },
+    { value: "thoughts", label: "Thoughts", count: thoughts.length },
+    { value: "glows", label: "Kudos" },
+    { value: "about", label: "About" },
+  ];
 
   const [selectedPost, setSelectedPost] = useState(null);
 
@@ -47,73 +51,23 @@ const ProfileTabs = ({ item, posts, allPhotos }) => {
   );
 
   return (
-    <Card className="bg-[var(--home-card)] border-0 p-0 w-full mt-1">
+    <Card className="mt-4 w-full gap-0 border-0 bg-[var(--home-card)] p-0 shadow-none">
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="w-full bg-[var(--home-card)] bg-none">
-          <TabsTrigger
-            value="posts"
-            className="
-                rounded-none pt-4.5 pb-4.5 cursor-pointer
-                border-0
-                !bg-transparent !hover:bg-transparent
-                data-[state=active]:border-b-2
-                data-[state=active]:border-[var(--accent-color)]
-              "
-          >
-            {formatCount(posts.length)} {totalPosts}
-          </TabsTrigger>
-
-          <TabsTrigger
-            value="photos"
-            className="
-                rounded-none pt-4.5 pb-4.5 cursor-pointer
-                border-0
-                !bg-transparent !hover:bg-transparent
-                data-[state=active]:border-b-2
-                data-[state=active]:border-[var(--accent-color)]
-              "
-          >
-            {formatCount(allPhotos.length)} {totalPhotos}
-          </TabsTrigger>
-
-          <TabsTrigger
-            value="thoughts"
-            className="
-                rounded-none pt-4.5 pb-4.5 cursor-pointer
-                border-0
-                !bg-transparent !hover:bg-transparent
-                data-[state=active]:border-b-2
-                data-[state=active]:border-[var(--accent-color)]
-              "
-          >
-            {formatCount(countThoughts)} {totalThoughts}
-          </TabsTrigger>
-
-          <TabsTrigger
-            value="glows"
-            className="
-                rounded-none pt-4.5 pb-4.5 cursor-pointer
-                border-0
-                !bg-transparent !hover:bg-transparent
-                data-[state=active]:border-b-2
-                data-[state=active]:border-[var(--accent-color)]
-              "
-          >
-            Kudos
-          </TabsTrigger>
-
-          <TabsTrigger
-            value="about"
-            className="
-                rounded-none pt-4.5 pb-4.5 cursor-pointer
-                border-0
-                !bg-transparent !hover:bg-transparent
-                data-[state=active]:border-b-2
-                data-[state=active]:border-[var(--accent-color)]
-              "
-          >
-            About
-          </TabsTrigger>
+        <TabsList className="no-scrollbar h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-b bg-transparent p-0 px-2 sm:justify-center">
+          {TABS.map((t) => (
+            <TabsTrigger
+              key={t.value}
+              value={t.value}
+              className="group h-11 flex-none cursor-pointer gap-1.5 rounded-none border-0 border-b-2 border-transparent !bg-transparent px-3 text-sm text-[var(--color-subtitle)] shadow-none data-[state=active]:border-[var(--button-color-bg)] data-[state=active]:text-[var(--title-color)] data-[state=active]:shadow-none sm:px-5"
+            >
+              {t.label}
+              {t.count !== undefined && (
+                <span className="rounded-full bg-[var(--photo-bg)] px-1.5 text-[11px] tabular-nums text-[var(--color-subtitle)] group-data-[state=active]:bg-[color-mix(in_srgb,var(--button-color-bg)_18%,transparent)] group-data-[state=active]:text-[var(--title-color)]">
+                  {formatCount(t.count)}
+                </span>
+              )}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         {/* Posts Content*/}

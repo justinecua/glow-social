@@ -18,6 +18,14 @@ class Post(models.Model):
     caption = models.CharField(max_length=800, blank=True, default="")
     dateTime = models.DateTimeField(auto_now_add=True, null=True)
 
+    class Meta:
+        indexes = [
+            # Feed / explore / "new posts" filter and sort by time.
+            models.Index(fields=["-dateTime"], name="post_datetime_idx"),
+            # A profile's posts, newest first.
+            models.Index(fields=["account", "-dateTime"], name="post_author_datetime_idx"),
+        ]
+
     def __str__(self):
         return self.caption
 

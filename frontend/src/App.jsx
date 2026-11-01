@@ -1,5 +1,6 @@
 import SparksHost from "@/features/sparks/SparksHost";
 import { useEffect } from "react";
+import { MotionConfig } from "framer-motion";
 import { useDispatch } from "react-redux";
 import { setUser } from "@/redux/slices/authSlice";
 
@@ -43,6 +44,8 @@ function App() {
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+      {/* Honor the OS "reduce motion" setting for all framer-motion animations. */}
+      <MotionConfig reducedMotion="user">
       <WebSocketProvider>
         <RootLayout>
           <Routes>
@@ -73,6 +76,7 @@ function App() {
           <Toaster position="bottom-right" />
         </RootLayout>
       </WebSocketProvider>
+      </MotionConfig>
     </ThemeProvider>
   );
 }

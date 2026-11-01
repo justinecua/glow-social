@@ -1,3 +1,4 @@
+from django.core.cache import cache
 """Identity helpers: who is making this request?
 
 Never trust account IDs sent by the client (request body, URL or WebSocket
@@ -14,9 +15,24 @@ WS_TICKET_MAX_AGE = 60  # seconds: only needs to survive until the socket opens
 
 
 def account_id_for_user(user):
+    """The signed-in user's account id. Cached in Redis: it never changes, and
+    almost every request needs it."""
     if not user or not user.is_authenticated:
         return None
-    return Account.objects.filter(auth_user=user).values_list("id", flat=True).first()
+    key = f"account_id_for_user:{user.pk}"
+    try:
+        cached = cache.get(key)
+    except Exception:
+        cached = None  # Redis down: ask the database
+    if cached:
+        return cached
+    account_id = Account.objects.filter(auth_user=user).values_list("id", flat=True).first()
+    if account_id:
+        try:
+            cache.set(key, account_id, 60 * 60)
+        except Exception:
+            pass
+    return account_id
 
 
 def current_account_id(request):

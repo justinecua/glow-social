@@ -25,6 +25,8 @@ const BOT_LOGOS = {
   glow_pilipinas: GlowPilipinasLogo,
 };
 
+/** The logo for one of Glow's automated accounts, by username (or undefined). */
+export const botLogo = (username) => (username ? BOT_LOGOS[username] : undefined);
+
 /** The photo to show for an account: its bot logo if it has one. */
-export const accountPhoto = (a) =>
-  (a?.is_bot && a.username && BOT_LOGOS[a.username]) || a?.profile_photo || "";
+export const accountPhoto = (a) => botLogo(a?.username) || a?.profile_photo || "";

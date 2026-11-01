@@ -64,7 +64,10 @@ const SparkRing = ({ accountId, children, width = 2.5, className = "" }) => {
         className="absolute inset-0 rounded-full transition-opacity"
         style={style}
       />
-      <span className="relative rounded-full bg-[var(--home-card)]" style={{ padding: 1.5 }}>
+      <span
+        className="relative rounded-full bg-[var(--home-card)]"
+        style={{ padding: 1.5 }}
+      >
         {children}
       </span>
     </span>

@@ -58,7 +58,27 @@ export function ThemeProvider({
     resolvedTheme,
     setTheme: (newTheme) => {
       localStorage.setItem(storageKey, newTheme);
-      setTheme(newTheme);
+      const root = window.document.documentElement;
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (!document.startViewTransition || reduceMotion) {
+        setTheme(newTheme);
+        return;
+      }
+      // Cross-fade the whole page between themes. The class is swapped
+      // inside the callback so the browser captures the new state; the
+      // effect above then re-applies the same class (a no-op).
+      const applied =
+        newTheme === "system"
+          ? window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light"
+          : newTheme;
+      document.startViewTransition(() => {
+        root.classList.remove("light", "dark");
+        root.classList.add(applied);
+        root.style.colorScheme = applied;
+        setTheme(newTheme);
+      });
     },
   };
 

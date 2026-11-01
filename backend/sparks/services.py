@@ -8,7 +8,10 @@ import binascii
 import os
 import uuid
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.conf import settings
+from django.core.cache import cache
 from django.db import IntegrityError
 from django.db.models import Count
 from django.utils import timezone
@@ -25,6 +28,41 @@ BACKGROUNDS = {"sunrise", "ocean", "forest", "dusk", "ember", "night"}
 
 class SparkError(ValueError):
     pass
+
+
+# ---------------------------------------------------------------- Redis cache + realtime
+# Each person's Today timeline is cached in Redis. It's cleared only when
+# something they'd see changes (a friend posts/deletes, they view/warm), and
+# friends are told over the WebSocket to refetch, so apps don't need to poll.
+CACHE_SECONDS = 120
+
+
+def _cache_key(account_id):
+    return f"sparks:today:{account_id}"
+
+
+def _forget(account_ids):
+    """Drop cached timelines (one Redis round trip). Never breaks a request."""
+    try:
+        cache.delete_many([_cache_key(i) for i in set(account_ids)])
+    except Exception as error:
+        print(f"Sparks cache clear failed: {error}")
+
+
+def _push_update(account_ids):
+    """Tell these people's open apps to refetch their sparks (best effort)."""
+    layer = get_channel_layer()
+    for account_id in set(account_ids):
+        try:
+            async_to_sync(layer.group_send)(f"user_{account_id}", {"type": "sparks_updated"})
+        except Exception as error:
+            print(f"Sparks realtime push failed: {error}")
+            return  # Redis is down: don't retry for every friend
+
+
+def _audience_of(author_id):
+    """Everyone whose timeline a new/deleted spark by `author_id` affects."""
+    return set(friend_ids(author_id)) | {author_id}
 
 
 # ---------------------------------------------------------------- photos
@@ -121,6 +159,25 @@ def _person(acc: Account):
 
 
 def today(viewer_id):
+    """The viewer's Today timeline, served from Redis when possible."""
+    key = _cache_key(viewer_id)
+    try:
+        data = cache.get(key)
+    except Exception:
+        data = None  # Redis down: just use the database
+    now = timezone.now().isoformat()
+    # A cached copy is only good while none of its sparks have expired.
+    if data is not None and all(s["expires_at"] > now for s in data["sparks"]):
+        return {**data, "now": now}
+    data = _today_from_db(viewer_id)
+    try:
+        cache.set(key, data, CACHE_SECONDS)
+    except Exception:
+        pass
+    return data
+
+
+def _today_from_db(viewer_id):
     """Everything on the viewer's Today timeline, oldest first, plus a
     per-author summary used for the glowing avatar rings."""
     sparks = visible_sparks(viewer_id)
@@ -179,6 +236,9 @@ def create(viewer_id, data, request=None):
         background="" if photo else background,
         close_friends_only=bool(data.get("close_friends_only")),
     )
+    audience = _audience_of(viewer_id)
+    _forget(audience)
+    _push_update(audience - {viewer_id})
     return s
 
 
@@ -186,9 +246,12 @@ def mark_viewed(spark, viewer_id):
     if spark.account_id == viewer_id:
         return
     try:
-        SparkView.objects.get_or_create(spark=spark, account_id=viewer_id)
+        _, created = SparkView.objects.get_or_create(spark=spark, account_id=viewer_id)
     except IntegrityError:
-        pass
+        created = False
+    if created:
+        # Your "seen" state and the author's view count changed.
+        _forget([viewer_id, spark.account_id])
 
 
 def warm(spark, viewer_id):
@@ -199,6 +262,15 @@ def warm(spark, viewer_id):
         SparkWarm.objects.get_or_create(spark=spark, account_id=viewer_id)
     except IntegrityError:
         pass
+    _forget([viewer_id, spark.account_id])
+    return spark.warms.count()
+
+
+def unwarm(spark, viewer_id):
+    """Take back your spark reaction."""
+    deleted, _ = SparkWarm.objects.filter(spark=spark, account_id=viewer_id).delete()
+    if deleted:
+        _forget([viewer_id, spark.account_id])
     return spark.warms.count()
 
 
@@ -219,15 +291,21 @@ def stats(spark):
     }
 
 
-def remove(spark):
+def remove(spark, notify=True):
+    author_id = spark.account_id
     delete_photo_file(spark.photo)
     spark.delete()
+    if notify:
+        audience = _audience_of(author_id)
+        _forget(audience)
+        _push_update(audience - {author_id})
 
 
 def purge_expired():
     """Delete sparks (and their photo files) that expired."""
     n = 0
     for s in Spark.objects.filter(expires_at__lte=timezone.now()):
-        remove(s)
+        # Timelines already hide expired sparks, so no need to notify anyone.
+        remove(s, notify=False)
         n += 1
     return n

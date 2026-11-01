@@ -139,6 +139,11 @@ DATABASES = {
         'OPTIONS': {
             'options': '-c search_path=glow,glow',  
         },
+        # Reuse database connections between requests instead of opening a
+        # new one every time (the DB is remote, so connecting is slow).
+        # Keep (workers x threads) below the database's max_connections.
+        'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '60')),
+        'CONN_HEALTH_CHECKS': True,  # replace connections that went stale
     }
 }
 

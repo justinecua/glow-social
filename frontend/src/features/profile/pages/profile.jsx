@@ -47,7 +47,7 @@ const ProfilePage = () => {
       {profile.map((item) => (
         <Card
           key={item.id}
-          className="w-full flex-1 sm:w-[95%] p-4 md:w-[85%] lg:w-[75%] bg-[var(--home-card)] shadow-md rounded-xl"
+          className="w-full flex-1 gap-0 p-2 sm:w-[95%] sm:p-3 md:w-[85%] lg:w-[75%] bg-[var(--home-card)] shadow-md rounded-xl"
         >
           {/* Cover Page */}
           <ProfileCover item={item} />

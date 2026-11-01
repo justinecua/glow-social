@@ -50,6 +50,23 @@ export const sparksApi = api.enhanceEndpoints({ addTagTypes: ["Sparks"] }).injec
         }
       },
     }),
+    // Unspark: take your reaction back.
+    unwarmSpark: builder.mutation({
+      query: (id) => ({ url: `sparks/${id}/warm/`, method: "DELETE", timeout }),
+      async onQueryStarted(id, { dispatch, queryFulfilled }) {
+        const patch = dispatch(
+          sparksApi.util.updateQueryData("getSparks", undefined, (d) => {
+            const s = d?.sparks?.find((x) => x.id === id);
+            if (s) s.warmed = false;
+          })
+        );
+        try {
+          await queryFulfilled;
+        } catch {
+          patch.undo();
+        }
+      },
+    }),
   }),
 });
 
@@ -68,6 +85,7 @@ export const {
   useGetSparkStatsQuery,
   useViewSparkMutation,
   useWarmSparkMutation,
+  useUnwarmSparkMutation,
 } = sparksApi;
 
 /** Text-spark backgrounds (keys match the server). */

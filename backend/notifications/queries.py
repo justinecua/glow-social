@@ -20,8 +20,6 @@ def countNotifications(account_id):
     finally:        
         if cursor:
             cursor.close()
-        if connection:
-            connection.close()
 
 
 

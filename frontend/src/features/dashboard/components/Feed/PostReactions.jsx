@@ -1,4 +1,6 @@
 import { useState } from "react";
+// eslint-disable-next-line no-unused-vars -- used as <motion.*> in JSX
+import { AnimatePresence, motion } from "framer-motion";
 import { useTheme } from "@/components/themes/theme-provider";
 
 import glowOnOriginal from "../../../../assets/icons/glow.png";
@@ -114,45 +116,63 @@ const PostReactions = ({ item }) => {
   const initiallyGlowed = item?.glowers?.includes(accId);
   const isGlowOn = glowStates[item.id] ?? initiallyGlowed ?? false;
   const isCommentOn = showComment;
+  const glowCount =
+    (item?.glow_count ?? 0) +
+    (glowStates[item.id] === true && !initiallyGlowed ? 1 : 0) -
+    (glowStates[item.id] === false && initiallyGlowed ? 1 : 0);
 
   /*---------------------------- Like Algorithm ------------------------ */
 
   return (
     <>
       <div className="flex gap-2 w-full">
-        <button
+        <motion.button
           onClick={() => toggleGlow(item.id)}
-          className={`flex  items-center mt-1 px-3 py-2 rounded-lg transition-transform duration-150 relative overflow-hidden cursor-pointer
+          whileTap={{ scale: 0.92 }}
+          transition={{ type: "spring", stiffness: 500, damping: 30 }}
+          aria-pressed={isGlowOn}
+          className={`flex items-center mt-1 px-3 py-2 rounded-lg relative overflow-hidden cursor-pointer transition-[background-color,box-shadow] duration-300 ease-out
         ${
           isGlowOn
-            ? "bg-[#2442de] animate-pulse shadow-[0_2px_13px_#2442de]"
-            : "bg-[var(--photo-bg)]"
+            ? "bg-[#2442de] shadow-[0_2px_13px_#2442de]"
+            : "bg-[var(--photo-bg)] shadow-none"
         }`}
         >
-          <img
+          {/* key changes on toggle, so the icon pops once instead of pulsing forever */}
+          <motion.img
+            key={isGlowOn ? "on" : "off"}
             src={isGlowOn ? glowOn : glowOff}
             alt="Glow Icon"
-            className="w-4 h-4 transition-transform duration-200"
+            className="w-4 h-4"
+            initial={isGlowOn ? { scale: 0.6, rotate: -20 } : false}
+            animate={{ scale: [isGlowOn ? 1.35 : 1, 1], rotate: 0 }}
+            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
           />
           <span
-            className={`ml-2 ${
+            className={`ml-2 relative inline-flex overflow-hidden tabular-nums ${
               isGlowOn ? "text-white" : resolvedTheme === "light" ? "text-black" : "text-[#f9f8fa]"
             }`}
           >
-            {formatCount(
-              item?.glow_count +
-                (glowStates[item.id] === true && !initiallyGlowed ? 1 : 0) -
-                (glowStates[item.id] === false && initiallyGlowed ? 1 : 0)
-            )}
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.span
+                key={glowCount}
+                initial={{ y: isGlowOn ? 12 : -12, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: isGlowOn ? -12 : 12, opacity: 0 }}
+                transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+              >
+                {formatCount(glowCount)}
+              </motion.span>
+            </AnimatePresence>
           </span>
-        </button>
+        </motion.button>
 
         <button
           onClick={openComments}
           onMouseEnter={warmComments}
           onFocus={warmComments}
           onTouchStart={warmComments}
-          className={`flex bg-[var(--photo-bg)] items-center mt-1 px-3 py-2 rounded-lg transition-transform duration-150 cursor-pointer`}
+          className={`flex bg-[var(--photo-bg)] items-center mt-1 px-3 py-2 rounded-lg transition-transform duration-150 ease-out active:scale-[0.94] cursor-pointer`}
         >
           <img
             src={isCommentOn ? commentOn : commentOff}

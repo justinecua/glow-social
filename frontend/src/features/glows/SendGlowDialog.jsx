@@ -1,25 +1,21 @@
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
-  DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { useGetMyGlowStatusQuery, useSendGlowNoteMutation } from "@/redux/services/growth";
+import { Avatar } from "@/features/discover/components/PersonRow";
+import {
+  useGetMyGlowStatusQuery,
+  useSendGlowNoteMutation,
+} from "@/redux/services/growth";
 
 const MAX = 140;
-const SUGGESTIONS = [
-  "Thanks for always being there 🙏",
-  "You made my day better",
-  "Proud of you!",
-  "Your posts always make me smile 😊",
-];
 
+/** Write someone a short kudos note. */
 const SendGlowDialog = ({ open, onOpenChange, recipient }) => {
   const [message, setMessage] = useState("");
   const [sendGlow, { isLoading }] = useSendGlowNoteMutation();
@@ -32,10 +28,13 @@ const SendGlowDialog = ({ open, onOpenChange, recipient }) => {
   const name = recipient.firstname || `@${recipient.username}`;
   const remaining = status?.remaining_today ?? null;
   const outOfGlows = remaining === 0;
+  const passingOn = status?.passes_available > 0;
+  const canSend = !!message.trim() && !isLoading && !outOfGlows;
+  const nearLimit = message.length > MAX - 20;
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!message.trim() || isLoading || outOfGlows) return;
+    if (!canSend) return;
     try {
       const note = await sendGlow({
         recipient_id: Number(recipient.id),
@@ -43,8 +42,8 @@ const SendGlowDialog = ({ open, onOpenChange, recipient }) => {
       }).unwrap();
       toast.success(
         note.chain_length > 1
-          ? `Kudos passed on! This chain is now ${note.chain_length} people long.`
-          : `You sent ${name} kudos.`
+          ? `Passed on. That's ${note.chain_length} people in this chain.`
+          : `Kudos sent to ${name}.`,
       );
       onOpenChange(false);
     } catch (err) {
@@ -54,64 +53,78 @@ const SendGlowDialog = ({ open, onOpenChange, recipient }) => {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[var(--home-card)] sm:max-w-md">
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">Send {name} kudos</DialogTitle>
-            <DialogDescription>
-              A short note of appreciation. It'll appear in their Kudos tab.
-            </DialogDescription>
-          </DialogHeader>
-
-          {status?.passes_available > 0 && (
-            <p className="rounded-lg bg-[color-mix(in_srgb,var(--button-color-bg)_10%,transparent)] px-3 py-2 text-xs dark:bg-[color-mix(in_srgb,var(--button-color-bg)_22%,transparent)]">
-              You're passing on kudos someone sent you, so this adds to their chain.
-            </p>
-          )}
-
-          <div>
-            <textarea
-              autoFocus
-              value={message}
-              maxLength={MAX}
-              rows={3}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder={`What do you appreciate about ${name}?`}
-              className="w-full resize-none rounded-lg border bg-transparent p-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      <DialogContent className="gap-0 overflow-hidden bg-[var(--home-card)] p-0 sm:max-w-md">
+        <form onSubmit={submit}>
+          {/* To: who */}
+          <div className="flex items-center gap-3 border-b px-5 py-4">
+            <Avatar
+              src={recipient.profile_photo}
+              alt={recipient.username}
+              className="h-10 w-10 shrink-0"
             />
-            <div className="mt-1 flex justify-between text-xs text-[var(--color-subtitle)]">
-              <span>{remaining !== null && `${remaining} kudos left today`}</span>
-              <span>
-                {message.length}/{MAX}
-              </span>
+            <div className="min-w-0 flex-1 leading-tight">
+              <DialogTitle className="truncate text-[15px] font-semibold">
+                Kudos for {name}
+              </DialogTitle>
+              <DialogDescription className="truncate text-xs text-[var(--color-subtitle)]">
+                @{recipient.username} will see it on their profile
+              </DialogDescription>
             </div>
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              aria-label="Close"
+              className="cursor-pointer rounded-full p-1.5 text-[var(--color-subtitle)] transition-colors hover:bg-[var(--button-hover-bg-color)] hover:text-[var(--title-color)]"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
 
-          {!message && (
-            <div className="flex flex-wrap gap-2">
-              {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setMessage(s)}
-                  className="cursor-pointer rounded-full bg-[var(--photo-bg)] px-3 py-1 text-xs hover:bg-[var(--button-hover-bg-color)]"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
+          {/* The note */}
+          <textarea
+            autoFocus
+            value={message}
+            maxLength={MAX}
+            rows={4}
+            disabled={outOfGlows}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(e);
+            }}
+            placeholder={
+              outOfGlows
+                ? "You've sent all your kudos for today."
+                : "Say something nice…"
+            }
+            aria-label={`Kudos for ${name}`}
+            className="block w-full resize-none bg-transparent px-5 py-4 text-[17px] leading-relaxed outline-none placeholder:text-[var(--color-subtitle)] disabled:cursor-not-allowed"
+          />
 
-          <DialogFooter>
-            <Button
+          {/* Details + send */}
+          <div className="flex items-center gap-3 px-5 pb-4">
+            <p className="min-w-0 flex-1 truncate text-xs text-[var(--color-subtitle)]">
+              {passingOn
+                ? "Passing on kudos you received"
+                : remaining !== null
+                  ? `${remaining} left today`
+                  : ""}
+              {nearLimit && (
+                <span
+                  className={`ml-2 tabular-nums ${message.length >= MAX ? "text-red-500" : ""}`}
+                >
+                  {MAX - message.length}
+                </span>
+              )}
+            </p>
+            <button
               type="submit"
-              disabled={!message.trim() || isLoading || outOfGlows}
-              className="cursor-pointer bg-[var(--button-color-bg)] text-white hover:opacity-90"
+              disabled={!canSend}
+              className="flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-full bg-[var(--button-color-bg)] px-5 text-sm font-semibold text-white transition-[filter,transform,opacity] hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {isLoading && <Loader2 className="animate-spin" />}
-              {outOfGlows ? "No kudos left today" : "Send kudos"}
-            </Button>
-          </DialogFooter>
+              {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+              Send
+            </button>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

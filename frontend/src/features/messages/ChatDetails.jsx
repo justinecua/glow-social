@@ -1,13 +1,26 @@
+import { useKudosSent } from "@/features/glows/useKudosSent";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarDays, Diamond, LogOut, Star, Type, UserPlus, UserRound, X } from "lucide-react";
+import {
+  CalendarDays,
+  Diamond,
+  LogOut,
+  Star,
+  Type,
+  UserPlus,
+  UserRound,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar } from "@/features/discover/components/PersonRow";
 import SendGlowDialog from "@/features/glows/SendGlowDialog";
 import { useGetProfileQuery } from "@/redux/services/accounts/accounts";
 import { useGetGlowWallQuery } from "@/redux/services/growth";
-import { useGetMyFriendsQuery, useSetCloseFriendMutation } from "@/redux/services/discover";
+import {
+  useGetMyFriendsQuery,
+  useSetCloseFriendMutation,
+} from "@/redux/services/discover";
 import { formatCount } from "@/lib/formatCount";
 import { ChatAvatar, otherMembers, personName } from "./chatUtils";
 
@@ -39,6 +52,7 @@ const PersonDetails = ({ personId, onClose }) => {
   const { data: friends } = useGetMyFriendsQuery(undefined);
   const [setCloseFriend] = useSetCloseFriendMutation();
   const [glowOpen, setGlowOpen] = useState(false);
+  const kudosSent = useKudosSent(personId);
 
   const friend = (friends?.friends ?? []).find((f) => f.id === personId);
   const isClose = !!friend?.is_close;
@@ -55,7 +69,11 @@ const PersonDetails = ({ personId, onClose }) => {
       {/* Cover + avatar */}
       <div className="relative h-28 shrink-0 bg-[color-mix(in_srgb,var(--button-color-bg)_25%,transparent)]">
         {profile?.cover_photo && (
-          <img src={profile.cover_photo} alt="" className="h-full w-full object-cover" />
+          <img
+            src={profile.cover_photo}
+            alt=""
+            className="h-full w-full object-cover"
+          />
         )}
       </div>
       <div className="-mt-10 px-5">
@@ -74,8 +92,12 @@ const PersonDetails = ({ personId, onClose }) => {
                 className="h-20 w-20 ring-4 ring-[var(--home-card)]"
               />
             </Link>
-            <h2 className="mt-3 text-lg font-bold leading-tight">{personName(profile)}</h2>
-            <p className="text-sm text-[var(--color-subtitle)]">@{profile.username}</p>
+            <h2 className="mt-3 text-lg font-bold leading-tight">
+              {personName(profile)}
+            </h2>
+            <p className="text-sm text-[var(--color-subtitle)]">
+              @{profile.username}
+            </p>
           </>
         )}
       </div>
@@ -84,7 +106,9 @@ const PersonDetails = ({ personId, onClose }) => {
         {bio && (
           <section>
             <p className={sectionTitle}>About</p>
-            <p className="whitespace-pre-line text-sm [overflow-wrap:anywhere]">{bio}</p>
+            <p className="whitespace-pre-line text-sm [overflow-wrap:anywhere]">
+              {bio}
+            </p>
           </section>
         )}
 
@@ -99,7 +123,8 @@ const PersonDetails = ({ personId, onClose }) => {
             className="flex items-center gap-2 text-[var(--color-subtitle)] hover:text-[var(--title-color)]"
           >
             <Diamond className="h-4 w-4" />
-            {formatCount(wall?.count ?? 0)} glow{wall?.count === 1 ? "" : "s"} received
+            {formatCount(wall?.count ?? 0)} glow{wall?.count === 1 ? "" : "s"}{" "}
+            received
           </Link>
         </section>
 
@@ -107,8 +132,17 @@ const PersonDetails = ({ personId, onClose }) => {
           <Link to={`/profile/${personId}`} className={actionRow}>
             <UserRound className="h-4 w-4" /> View profile
           </Link>
-          <button type="button" onClick={() => setGlowOpen(true)} className={actionRow}>
-            <Diamond className="h-4 w-4" /> Send kudos
+          <button
+            type="button"
+            onClick={() => setGlowOpen(true)}
+            disabled={kudosSent}
+            title={
+              kudosSent ? "You can send them kudos again tomorrow" : undefined
+            }
+            className={`${actionRow} disabled:cursor-default disabled:opacity-50`}
+          >
+            <Diamond className="h-4 w-4" />{" "}
+            {kudosSent ? "Kudos sent today" : "Send kudos"}
           </button>
           {friend && (
             <button
@@ -118,7 +152,11 @@ const PersonDetails = ({ personId, onClose }) => {
                 setCloseFriend({ account_id: personId, close: !isClose })
                   .unwrap()
                   .then(() =>
-                    toast.success(isClose ? "Removed from Close friends" : "Added to Close friends")
+                    toast.success(
+                      isClose
+                        ? "Removed from Close friends"
+                        : "Added to Close friends",
+                    ),
                   )
                   .catch(() => toast.error("Couldn't update Close friends."))
               }
@@ -138,7 +176,12 @@ const PersonDetails = ({ personId, onClose }) => {
         <SendGlowDialog
           open={glowOpen}
           onOpenChange={setGlowOpen}
-          recipient={{ id: personId, username: profile.username, firstname: profile.firstname }}
+          recipient={{
+            id: personId,
+            username: profile.username,
+            firstname: profile.firstname,
+            profile_photo: profile.profile_photo,
+          }}
         />
       )}
     </Panel>
@@ -146,12 +189,23 @@ const PersonDetails = ({ personId, onClose }) => {
 };
 
 /** Right-hand details for a group chat: members and group actions. */
-const GroupDetails = ({ conv, myId, onClose, onRename, onAddPeople, onLeave }) => (
+const GroupDetails = ({
+  conv,
+  myId,
+  onClose,
+  onRename,
+  onAddPeople,
+  onLeave,
+}) => (
   <Panel onClose={onClose}>
     <div className="flex flex-col items-center px-5 pb-4 pt-10 text-center">
       <ChatAvatar conversation={conv} myId={myId} size="h-20 w-20" />
-      <h2 className="mt-3 text-lg font-bold leading-tight [overflow-wrap:anywhere]">{conv.name}</h2>
-      <p className="text-sm text-[var(--color-subtitle)]">{conv.members.length} members</p>
+      <h2 className="mt-3 text-lg font-bold leading-tight [overflow-wrap:anywhere]">
+        {conv.name}
+      </h2>
+      <p className="text-sm text-[var(--color-subtitle)]">
+        {conv.members.length} members
+      </p>
     </div>
 
     <div className="flex flex-col gap-5 px-5 pb-6">
@@ -160,12 +214,19 @@ const GroupDetails = ({ conv, myId, onClose, onRename, onAddPeople, onLeave }) =
         <div className="-mx-2">
           {conv.members.map((m) => (
             <Link key={m.id} to={`/profile/${m.id}`} className={actionRow}>
-              <Avatar src={m.profile_photo} alt={m.username} className="h-8 w-8" />
+              <Avatar
+                src={m.profile_photo}
+                alt={m.username}
+                className="h-8 w-8"
+              />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">
                   {personName(m)}
                   {m.id === myId && (
-                    <span className="font-normal text-[var(--color-subtitle)]"> (you)</span>
+                    <span className="font-normal text-[var(--color-subtitle)]">
+                      {" "}
+                      (you)
+                    </span>
                   )}
                 </span>
                 <span className="block truncate text-xs text-[var(--color-subtitle)]">
@@ -184,7 +245,11 @@ const GroupDetails = ({ conv, myId, onClose, onRename, onAddPeople, onLeave }) =
         <button type="button" onClick={onRename} className={actionRow}>
           <Type className="h-4 w-4" /> Rename group
         </button>
-        <button type="button" onClick={onLeave} className={`${actionRow} text-red-500`}>
+        <button
+          type="button"
+          onClick={onLeave}
+          className={`${actionRow} text-red-500`}
+        >
           <LogOut className="h-4 w-4" /> Leave group
         </button>
       </section>
@@ -196,7 +261,9 @@ const ChatDetails = (props) => {
   if (props.conv.is_group) return <GroupDetails {...props} />;
   const other = otherMembers(props.conv, props.myId)[0];
   if (!other) return null;
-  return <PersonDetails key={other.id} personId={other.id} onClose={props.onClose} />;
+  return (
+    <PersonDetails key={other.id} personId={other.id} onClose={props.onClose} />
+  );
 };
 
 export default ChatDetails;
