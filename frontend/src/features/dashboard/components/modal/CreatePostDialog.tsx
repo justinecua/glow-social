@@ -18,6 +18,7 @@ import { useTheme } from "@/components/themes/theme-provider";
 import { useStoredUser } from "@/utils/auth";
 import { useCreatePostMutation } from "@/redux/services/posts/posts";
 import { toast } from "sonner";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Avatar } from "@/features/discover/components/PersonRow";
 
 const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
@@ -48,6 +49,8 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
   const emojiPickerRef = useRef(null);
   const { resolvedTheme } = useTheme();
   const [createPost, { isLoading }] = useCreatePostMutation();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
 
   const handleSubmit = async () => {
     if (!text.trim() && images.length === 0) return;
@@ -86,7 +89,9 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
       onPostCreated?.(response);
       // Let the feed know, whichever Create button was used.
       window.dispatchEvent(new CustomEvent("glow:post-created", { detail: response }));
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      // Created from another page: take the user to the feed to see it.
+      if (pathname !== "/") navigate("/");
+      else window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       console.error("Failed to create post:", err);
       toast.error("Failed to create post. Please try again.");

@@ -29,7 +29,8 @@ const NewsFeedMiddle = () => {
   const checking = useAuthChecking();
   const { data, isFetching, refetch } = useGetPostsQuery(
     { offset, limit: LIMIT },
-    { skip: checking }
+    // Always refetch when the feed mounts, so posts created elsewhere appear.
+    { skip: checking, refetchOnMountOrArgChange: true }
   );
 
   const [isDialogOpen, setDialogOpen] = useState(false);
@@ -48,9 +49,16 @@ const NewsFeedMiddle = () => {
   }, []);
 
   useEffect(() => {
-    // Append each new page, skipping posts we already have.
+    // Merge each fetched page into the list, skipping posts we already have.
     if (data?.results) {
       setAllPosts((prev) => {
+        // First page (incl. a refetch after the cached copy rendered):
+        // it's the newest, so it goes on top, followed by anything else
+        // we already had. Appending would bury a fresh post at the bottom.
+        if (offset === 0) {
+          const ids = new Set(data.results.map((p: any) => p.id));
+          return [...data.results, ...prev.filter((p) => !ids.has(p.id))];
+        }
         const newPosts = data.results.filter(
           (newItem: any) => !prev.some((existing) => existing.id === newItem.id)
         );

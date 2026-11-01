@@ -2,14 +2,23 @@ import { api } from "../auth/token";
 
 const timeout = 60000;
 
-export const receivedApi = api.injectEndpoints({
+export const receivedApi = api.enhanceEndpoints({ addTagTypes: ["Posts"] }).injectEndpoints({
   endpoints: (builder) => ({
+    getLinkPreview: builder.query({
+      query: (url: string) => ({
+        url: `posts/linkPreview/?url=${encodeURIComponent(url)}`,
+        method: "GET",
+        timeout: 10000,
+      }),
+      keepUnusedDataFor: 3600,
+    }),
     getPosts: builder.query({
       query: ({ offset = 0, limit = 5 }) => ({
         url: `posts/getPosts/?offset=${offset}&limit=${limit}`,
         method: "GET",
         timeout,
       }),
+      providesTags: ["Posts"],
       transformResponse: (response) => response,
       transformErrorResponse: (response) => response,
     }),
@@ -28,6 +37,7 @@ export const receivedApi = api.injectEndpoints({
         method: "GET",
         timeout,
       }),
+      providesTags: ["Posts"],
       transformResponse: (response) => response,
       transformErrorResponse: (response) => response,
     }),
@@ -47,6 +57,9 @@ export const receivedApi = api.injectEndpoints({
         body: body,
         timeout,
       }),
+      // Cached feed / profile pages refetch, so the new post shows up
+      // even if it was created while those pages weren't mounted.
+      invalidatesTags: ["Posts"],
       transformResponse: (response) => response,
       transformErrorResponse: (response) => response,
     }),
@@ -89,6 +102,7 @@ export const receivedApi = api.injectEndpoints({
 });
 
 export const {
+  useGetLinkPreviewQuery,
   useGetPostsQuery,
   useGetCommentsQuery,
   useGetPostsByUserQuery,
