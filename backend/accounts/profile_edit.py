@@ -2,13 +2,10 @@
 photos. Photos arrive as data URLs (same as post photos) and are saved under
 MEDIA_ROOT/profiles/."""
 
-import base64
-import binascii
-import os
-import uuid
 from datetime import date
 
-from django.conf import settings
+
+from GlowProject.media import MediaError, delete_media, read_image, save_image
 
 MAX_PHOTO_BYTES = 8 * 1024 * 1024
 GENDERS = {"", "male", "female", "non-binary", "other", "prefer not to say"}
@@ -35,43 +32,18 @@ def _image_ext(data: bytes):
     return None
 
 
-def _save_photo(data_url: str, folder: str, request) -> str:
-    if not isinstance(data_url, str) or "," not in data_url:
-        raise ProfileError("That photo couldn't be read.")
+def _save_photo(source, folder: str, request) -> str:
+    """Validate + store a profile/cover photo (multipart file or data URL)."""
     try:
-        data = base64.b64decode(data_url.split(",", 1)[1], validate=True)
-    except (binascii.Error, ValueError):
-        raise ProfileError("That photo couldn't be read.")
-    if len(data) > MAX_PHOTO_BYTES:
-        raise ProfileError("Photos must be 8 MB or smaller.")
-    ext = _image_ext(data)
-    if not ext:
-        raise ProfileError("Use a JPG, PNG, GIF or WebP image.")
-
-    rel = os.path.join("profiles", folder, f"{uuid.uuid4().hex}.{ext}")
-    full = os.path.join(settings.MEDIA_ROOT, rel)
-    os.makedirs(os.path.dirname(full), exist_ok=True)
-    with open(full, "wb") as f:
-        f.write(data)
-    link = settings.MEDIA_URL.rstrip("/") + "/" + rel.replace(os.sep, "/")
-    return request.build_absolute_uri(link) if request else link
+        link = save_image(read_image(source), f"profiles/{folder}")
+    except MediaError as e:
+        raise ProfileError(str(e))
+    return request.build_absolute_uri(link) if request and link.startswith("/") else link
 
 
 def _delete_old(url):
     """Remove a previously uploaded profile file (best effort)."""
-    if not url:
-        return
-    marker = settings.MEDIA_URL.rstrip("/") + "/profiles/"
-    i = url.find(marker)
-    if i == -1:
-        return
-    rel = url[i + len(settings.MEDIA_URL.rstrip("/")) + 1:]
-    path = os.path.normpath(os.path.join(settings.MEDIA_ROOT, rel))
-    if path.startswith(os.path.normpath(settings.MEDIA_ROOT)) and os.path.isfile(path):
-        try:
-            os.remove(path)
-        except OSError:
-            pass
+    delete_media(url)
 
 
 def _text(data, key, max_len):

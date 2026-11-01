@@ -22,8 +22,10 @@ import SparksTimeline from "@/features/sparks/SparksTimeline";
 import { useSeenTracker } from "@/features/posts/useSeenTracker";
 
 const LIMIT = 7;
-// How often to look for posts other people just shared.
-const NEW_POSTS_POLL_MS = 30_000;
+// Friends' new posts arrive instantly over the WebSocket ("posts_new").
+// This slow poll only catches public posts from non-friends, and covers
+// times the socket is down.
+const NEW_POSTS_POLL_MS = 5 * 60_000;
 
 const NewsFeedMiddle = () => {
   const user = useStoredUser();
@@ -76,9 +78,20 @@ const NewsFeedMiddle = () => {
     const timer = window.setInterval(check, NEW_POSTS_POLL_MS);
     const onVisible = () => document.visibilityState === "visible" && check();
     document.addEventListener("visibilitychange", onVisible);
+    // A friend just posted: check now. Several pushes in a burst (e.g. a
+    // friend posting twice) collapse into one request.
+    let pushTimer = null;
+    const onWs = (e) => {
+      if (e.detail?.type !== "posts_new") return;
+      window.clearTimeout(pushTimer);
+      pushTimer = window.setTimeout(check, 1500);
+    };
+    window.addEventListener("glow:ws", onWs);
     return () => {
       stopped = true;
       window.clearInterval(timer);
+      window.clearTimeout(pushTimer);
+      window.removeEventListener("glow:ws", onWs);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [checking, seed, dispatch]);

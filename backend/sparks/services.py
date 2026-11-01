@@ -3,14 +3,9 @@
 Who sees a spark: its author, and the author's friends (only the author's
 Close Friends when `close_friends_only`). Never public."""
 
-import base64
-import binascii
-import os
-import uuid
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from django.conf import settings
 from django.core.cache import cache
 from django.db import IntegrityError
 from django.db.models import Count
@@ -20,6 +15,7 @@ from accounts.models import Account
 from friends.models import CloseFriend
 from posts.discover import friend_ids
 
+from GlowProject.media import MediaError, delete_media, read_image, save_image
 from .models import Spark, SparkView, SparkWarm
 
 MAX_PHOTO_BYTES = 8 * 1024 * 1024
@@ -66,51 +62,17 @@ def _audience_of(author_id):
 
 
 # ---------------------------------------------------------------- photos
-def _image_ext(data: bytes):
-    if data.startswith(b"\xff\xd8\xff"):
-        return "jpg"
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "png"
-    if data[:6] in (b"GIF87a", b"GIF89a"):
-        return "gif"
-    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return "webp"
-    return None
-
-
-def _save_photo(data_url, request):
-    if not isinstance(data_url, str) or not data_url.startswith("data:") or "," not in data_url:
-        raise SparkError("That photo couldn't be read.")
+def _save_photo(source, request):
+    """Validate + store a spark photo (multipart file or legacy data URL)."""
     try:
-        data = base64.b64decode(data_url.split(",", 1)[1], validate=True)
-    except (binascii.Error, ValueError):
-        raise SparkError("That photo couldn't be read.")
-    if len(data) > MAX_PHOTO_BYTES:
-        raise SparkError("Photos must be 8 MB or smaller.")
-    ext = _image_ext(data)
-    if not ext:
-        raise SparkError("Use a JPG, PNG, GIF or WebP image.")
-    rel = os.path.join("sparks", f"{uuid.uuid4().hex}.{ext}")
-    full = os.path.join(settings.MEDIA_ROOT, rel)
-    os.makedirs(os.path.dirname(full), exist_ok=True)
-    with open(full, "wb") as f:
-        f.write(data)
-    link = settings.MEDIA_URL.rstrip("/") + "/" + rel.replace(os.sep, "/")
-    return request.build_absolute_uri(link) if request else link
+        link = save_image(read_image(source), "sparks")
+    except MediaError as e:
+        raise SparkError(str(e))
+    return request.build_absolute_uri(link) if request and link.startswith("/") else link
 
 
 def delete_photo_file(url):
-    marker = settings.MEDIA_URL.rstrip("/") + "/sparks/"
-    i = (url or "").find(marker)
-    if i == -1:
-        return
-    rel = url[i + len(settings.MEDIA_URL.rstrip("/")) + 1:]
-    path = os.path.normpath(os.path.join(settings.MEDIA_ROOT, rel))
-    if path.startswith(os.path.normpath(settings.MEDIA_ROOT)) and os.path.isfile(path):
-        try:
-            os.remove(path)
-        except OSError:
-            pass
+    delete_media(url)
 
 
 # ---------------------------------------------------------------- visibility
@@ -234,7 +196,8 @@ def create(viewer_id, data, request=None):
         photo=photo,
         text=text,
         background="" if photo else background,
-        close_friends_only=bool(data.get("close_friends_only")),
+        # Multipart sends "true"/"false" strings; JSON sends booleans.
+        close_friends_only=str(data.get("close_friends_only")).lower() in ("true", "1"),
     )
     audience = _audience_of(viewer_id)
     _forget(audience)

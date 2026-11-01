@@ -11,6 +11,8 @@ from django.conf import settings
 import base64
 
 
+from GlowProject.media import save_image
+
 def time_ago(post_datetime):
     now = datetime.now(pytz.utc)
     time_diff = now - post_datetime
@@ -201,21 +203,9 @@ def create_post(accID, audience, caption, photos, taglist, request=None):
 
             cursor.execute("INSERT INTO glow.glow.posts_tag_post (tag_id, post_id) VALUES (%s, %s)", (tag_id, post_id))
 
-        os.makedirs(os.path.join(settings.MEDIA_ROOT, 'photos'), exist_ok=True)
-
-        for photo in photos:
-            name = photo.get("name")
-            base64_data = photo.get("origurl").split(",")[1]
-            image_data = base64.b64decode(base64_data)
-
-            filename = f"{datetime.now().timestamp()}_{name}"
-            photo_path = os.path.join("photos", filename)
-            full_path = os.path.join(settings.MEDIA_ROOT, photo_path)
-
-            with open(full_path, "wb") as f:
-                f.write(image_data)
-
-            media_link = os.path.join(settings.MEDIA_URL, photo_path)
+        # `photos` are already-validated image bytes (see CreatePost view).
+        for image_data in photos:
+            media_link = save_image(image_data, "photos")
             cursor.execute("INSERT INTO glow.glow.posts_photo (link, post_id) VALUES (%s, %s)", (media_link, post_id))
 
         cursor.execute("""
