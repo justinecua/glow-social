@@ -3,7 +3,7 @@ import { formatCount } from "@/lib/formatCount";
 
 /** Red dot with the number of chats that have unread messages. */
 const UnreadBadge = ({ className = "" }) => {
-  const { data } = useGetUnreadMessagesQuery(undefined, { pollingInterval: 60000 });
+  const { data } = useGetUnreadMessagesQuery(undefined, { pollingInterval: 5 * 60_000 /* fallback: chat events refresh it live */ });
   const n = data?.unread ?? 0;
   if (!n) return null;
   return (

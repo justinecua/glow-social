@@ -17,6 +17,11 @@ class Post(models.Model):
     audience = models.ForeignKey(Audience, null=True, on_delete=models.CASCADE)
     caption = models.CharField(max_length=800, blank=True, default="")
     dateTime = models.DateTimeField(auto_now_add=True, null=True)
+    # Kept in sync by Postgres triggers on interactions_glow / _comment
+    # (see posts/migrations/0011_post_counters.py). Read these instead of
+    # COUNT()-ing glows/comments per post. `manage.py recount_posts` repairs drift.
+    glow_count = models.PositiveIntegerField(default=0)
+    comment_count = models.PositiveIntegerField(default=0)
 
     class Meta:
         indexes = [
