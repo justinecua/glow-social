@@ -1,3 +1,4 @@
+import AutomatedBadge from "@/components/ui/custom/AutomatedBadge";
 import { useRef, useState } from "react";
 import { useStoredUser } from "@/utils/auth";
 import { useEffect } from "react";
@@ -14,7 +15,8 @@ import { useWebSocket } from "@/utils/WebSocketContext";
 import { useCheckUserFriendRequestQuery } from "@/redux/services/friends/friends";
 import SendGlowDialog from "@/features/glows/SendGlowDialog";
 import { useNavigate } from "react-router-dom";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Pencil } from "lucide-react";
+import EditProfileDialog from "./EditProfileDialog";
 import { useStartConversationMutation } from "@/redux/services/messages";
 
 const ProfileName = ({ item, id }) => {
@@ -26,6 +28,7 @@ const ProfileName = ({ item, id }) => {
   const [canceling, setCanceling] = useState(false);
   const [unfriending, setUnfriend] = useState(false);
   const [glowOpen, setGlowOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const navigate = useNavigate();
   const [startConversation, { isLoading: opening }] = useStartConversationMutation();
   const cap = (v?: string) => (v ? v.charAt(0).toUpperCase() + v.slice(1) : "");
@@ -154,12 +157,31 @@ const ProfileName = ({ item, id }) => {
             <h3 className="font-bold text-balance text-xl sm:text-2xl md:text-2xl lg:text-2xl">
               {displayName}
             </h3>
-            <p className="text-xs sm:text-sm md:text-base text-[var(--color-subtitle)]">
+            <p className="flex items-center gap-2 text-xs sm:text-sm md:text-base text-[var(--color-subtitle)]">
               @{item?.username}
+              {item?.is_bot && <AutomatedBadge />}
             </p>
           </div>
 
           <div className="flex flex-wrap justify-end gap-2">
+            {isOwnProfile && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setEditOpen(true)}
+                  className="cursor-pointer flex items-center gap-2"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Edit profile
+                </Button>
+                <EditProfileDialog
+                  open={editOpen}
+                  onOpenChange={setEditOpen}
+                  item={item}
+                  profileId={id}
+                />
+              </>
+            )}
             {!isOwnProfile && (
               <>
                 <Button
@@ -167,7 +189,7 @@ const ProfileName = ({ item, id }) => {
                   onClick={() => setGlowOpen(true)}
                   className="cursor-pointer flex items-center gap-2"
                 >
-                  Send a glow
+                  Send kudos
                 </Button>
                 <SendGlowDialog
                   open={glowOpen}

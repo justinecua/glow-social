@@ -18,21 +18,18 @@ const LegalLinks = ({ className = "", variant = "inline" }: LegalLinksProps) => 
 
   if (variant === "footer") {
     return (
-      <footer
-        className={`border-t border-[var(--border)] pt-4 text-[11px] text-[var(--color-subtitle)] ${className}`}
-      >
-        <nav aria-label="Legal" className="flex flex-wrap items-center gap-1">
+      <footer className={`min-w-0 text-[11px] text-[var(--color-subtitle)] ${className}`}>
+        <nav aria-label="Legal" className="flex flex-wrap items-center gap-x-1.5">
           {LINKS.map(({ to, label }) => (
-            <Link
-              key={to}
-              to={to}
-              className="rounded-md px-2 py-1 transition-colors hover:bg-[var(--button-hover-bg-color)] hover:text-[var(--title-color)]"
-            >
-              {label}
-            </Link>
+            <span key={to} className="flex items-center gap-1.5">
+              <Link to={to} className="hover:text-[var(--title-color)] hover:underline">
+                {label}
+              </Link>
+              <span aria-hidden className="opacity-50">·</span>
+            </span>
           ))}
+          <span className="opacity-70">© {year} Glow</span>
         </nav>
-        <p className="mt-2 px-2 opacity-70">© {year} Glow. All rights reserved.</p>
       </footer>
     );
   }

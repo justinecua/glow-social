@@ -23,6 +23,10 @@ export const discoverApi = api.injectEndpoints({
         timeout,
       }),
     }),
+    getPeopleYouMayKnow: builder.query({
+      query: () => ({ url: "friends/suggestions/", method: "GET", timeout }),
+      keepUnusedDataFor: 120,
+    }),
     getMyFriends: builder.query({
       query: () => ({ url: "friends/mine/", method: "GET", timeout }),
     }),
@@ -55,5 +59,6 @@ export const {
   useGetPostsByTagQuery,
   useSearchQuery,
   useGetMyFriendsQuery,
+  useGetPeopleYouMayKnowQuery,
   useSetCloseFriendMutation,
 } = discoverApi;

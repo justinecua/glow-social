@@ -1,5 +1,8 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { useGetPostsQuery } from "../../../redux/services/posts/posts";
+import { useDispatch } from "react-redux";
+import { ArrowUp } from "lucide-react";
+import { receivedApi, useGetPostsQuery } from "../../../redux/services/posts/posts";
+import { Avatar } from "@/features/discover/components/PersonRow";
 import { Card, CardContent } from "@/components/ui/card";
 import PostPhotos from "./Feed/PostPhotos";
 import PostReactions from "./Feed/PostReactions";
@@ -14,13 +17,21 @@ import CreatePostDialog from "./modal/CreatePostDialog";
 import { useAuthChecking, useStoredUser } from "@/utils/auth";
 import WelcomeSteps from "@/features/growth/WelcomeSteps";
 import CaughtUpCard from "@/features/growth/CaughtUpCard";
+import PromptCard from "@/features/growth/PromptCard";
+import SparksTimeline from "@/features/sparks/SparksTimeline";
+import { useSeenTracker } from "@/features/posts/useSeenTracker";
 
 const LIMIT = 7;
+// How often to look for posts other people just shared.
+const NEW_POSTS_POLL_MS = 30_000;
 
 const NewsFeedMiddle = () => {
   const user = useStoredUser() as any;
   const accountId = user?.user?.account_id;
   const [offset, setOffset] = useState(0);
+  // One "visit" of the feed: shuffles older posts and freezes the order while
+  // you scroll. A new seed (pill tap / page load) gives a fresh mix.
+  const [seed, setSeed] = useState(() => Date.now());
   const [loadedPosts, setAllPosts] = useState<any[]>([]);
   // Applies edits/deletions made from the post ⋯ menu.
   const allPosts = useLivePosts(loadedPosts);
@@ -28,7 +39,7 @@ const NewsFeedMiddle = () => {
   // (friends first), so fetching as a visitor first would reshuffle it.
   const checking = useAuthChecking();
   const { data, isFetching, refetch } = useGetPostsQuery(
-    { offset, limit: LIMIT },
+    { offset, limit: LIMIT, seed },
     // Always refetch when the feed mounts, so posts created elsewhere appear.
     { skip: checking, refetchOnMountOrArgChange: true }
   );
@@ -37,6 +48,51 @@ const NewsFeedMiddle = () => {
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
   const [selectedPost, setSelectedPost] = useState<any>(null);
   const createRef = useRef<any>(null);
+  const dispatch = useDispatch<any>();
+  // Tell the server which posts you've looked at, so next visit shows new ones.
+  const trackSeen = useSeenTracker(!!accountId);
+
+  // Posts other people shared since this visit started. They wait behind
+  // the "New posts" pill instead of pushing the feed down while you read.
+  const [pending, setPending] = useState<{ count: number; authors: any[] } | null>(null);
+
+  useEffect(() => {
+    if (checking) return;
+    let stopped = false;
+    const check = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const res: any = await dispatch(
+          receivedApi.endpoints.getNewPostsCount.initiate(
+            { seed },
+            { subscribe: false, forceRefetch: true }
+          )
+        ).unwrap();
+        if (!stopped) setPending(res?.count > 0 ? res : null);
+      } catch {
+        /* offline or server hiccup: try again next round */
+      }
+    };
+    const timer = window.setInterval(check, NEW_POSTS_POLL_MS);
+    const onVisible = () => document.visibilityState === "visible" && check();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [checking, seed, dispatch]);
+
+  // Start a fresh visit: newest posts on top, new shuffle for the rest.
+  const showPending = () => {
+    setPending(null);
+    setAllPosts([]);
+    setOffset(0);
+    setSeed(Date.now());
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const pendingCount = pending?.count ?? 0;
+  const pendingAuthors = pending?.authors ?? [];
 
   const handlePhotoClick = (post: any, index: number) => {
     setSelectedPhotoIndex(index);
@@ -56,8 +112,11 @@ const NewsFeedMiddle = () => {
         // it's the newest, so it goes on top, followed by anything else
         // we already had. Appending would bury a fresh post at the bottom.
         if (offset === 0) {
+          // Keep only posts you just created (they're newer than this visit,
+          // so the server doesn't return them); the rest come from the server.
           const ids = new Set(data.results.map((p: any) => p.id));
-          return [...data.results, ...prev.filter((p) => !ids.has(p.id))];
+          const mine = prev.filter((p) => p.is_fresh && !ids.has(p.id) && String(p.account_id) === String(accountId));
+          return [...mine, ...data.results];
         }
         const newPosts = data.results.filter(
           (newItem: any) => !prev.some((existing) => existing.id === newItem.id)
@@ -112,10 +171,37 @@ const NewsFeedMiddle = () => {
         selectedIndex={selectedPhotoIndex}
       />
 
+      {pendingCount > 0 && (
+        <div className="pointer-events-none sticky top-3 z-30 flex h-0 justify-center">
+          <button
+            type="button"
+            onClick={showPending}
+            className="pointer-events-auto mt-3 flex h-10 shrink-0 animate-in fade-in slide-in-from-top-2 cursor-pointer items-center gap-2.5 rounded-full bg-[var(--button-color-bg)] pl-3 pr-4 text-sm font-semibold text-white shadow-[0_6px_20px_-4px_rgba(0,0,0,0.45)] transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0"
+          >
+            <ArrowUp className="h-4 w-4 shrink-0" strokeWidth={2.5} />
+            <span className="flex shrink-0 -space-x-1.5">
+              {pendingAuthors.slice(0, 3).map((p) => (
+                <span
+                  key={p.id}
+                  className="block h-6 w-6 overflow-hidden rounded-full ring-2 ring-[var(--button-color-bg)]"
+                >
+                  <Avatar src={p.profile_photo} alt={p.username} className="h-6 w-6" />
+                </span>
+              ))}
+            </span>
+            <span className="whitespace-nowrap">
+              {pendingCount > 99 ? "99+" : pendingCount} new {pendingCount === 1 ? "post" : "posts"}
+            </span>
+          </button>
+        </div>
+      )}
+
       <div className="pt-3">
+        {user && <SparksTimeline />}
         {user && accountId && (
           <WelcomeSteps accountId={accountId} onCreatePost={() => openCreate()} />
         )}
+        {user && <PromptCard onAnswer={(prompt) => createRef.current?.open({ prompt })} />}
       </div>
 
       {allPosts.length === 0 && (isFetching || checking) && renderSkeletons()}
@@ -129,6 +215,7 @@ const NewsFeedMiddle = () => {
       >
         {allPosts.map((post) => (
           <Fragment key={post.id}>
+            <div ref={trackSeen} data-post-id={post.id}>
             <Card className="bg-[var(--home-card)] mb-3">
               <CardContent>
                 <PostTopNav post={post} />
@@ -140,6 +227,7 @@ const NewsFeedMiddle = () => {
                 <PostReactions item={post} isProfile={false} />
               </CardContent>
             </Card>
+            </div>
           </Fragment>
         ))}
         {showCaughtUp && <CaughtUpCard />}

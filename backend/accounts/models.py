@@ -16,6 +16,9 @@ class Account(models.Model):
     auth_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.CASCADE)
     last_activity = models.DateTimeField(null=True, blank=True)
     is_online = models.BooleanField(default=False)
+    # Automated account (e.g. @glow_trends). Shown with an "Automated" badge
+    # and ranked lower in the feed than real people.
+    is_bot = models.BooleanField(default=False)
 
     # Legal consent records. Kept so we can show *when* a user agreed to
     # *which* version of the Terms/Privacy Policy, and their marketing choice.

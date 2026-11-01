@@ -45,6 +45,7 @@ urlpatterns = [
     path('api/friends/', include('friends.urls')),
     path('api/glows/', include('kudos.urls')),
     path('api/messages/', include('messaging.urls')),
+    path('api/sparks/', include('sparks.urls')),
     # Link-preview pages for sharing (crawler-friendly HTML, then redirects)
     path('share/post/<int:post_id>/', share_post_page, name='sharePost'),
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),

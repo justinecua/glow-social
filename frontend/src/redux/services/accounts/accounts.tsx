@@ -48,6 +48,14 @@ export const accounts = api.injectEndpoints({
       transformResponse: (response) => response,
       transformErrorResponse: (response) => response,
     }),
+    updateMyProfile: builder.mutation({
+      query: (body) => ({
+        url: `accounts/me/profile/`,
+        method: "PATCH",
+        body,
+        timeout,
+      }),
+    }),
     getTotalFriends: builder.query({
       query: ({ account_id }) => ({
         url: `/friends/getTotalFriends/${account_id}`,
@@ -66,4 +74,5 @@ export const {
   useGetTotalFriendsQuery,
   useExportMyDataMutation,
   useDeleteMyAccountMutation,
+  useUpdateMyProfileMutation,
 } = accounts;

@@ -42,3 +42,53 @@ class Tag(models.Model):
 
     def __str__(self):
         return self.tag
+
+
+class PostSeen(models.Model):
+    """A post that appeared on someone's screen in the feed. The feed ranks
+    already-seen posts lower, like Instagram/Facebook do, so each visit
+    shows something new."""
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="seen_posts")
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="seen_by")
+    first_seen = models.DateTimeField(auto_now_add=True)
+    last_seen = models.DateTimeField(auto_now=True)
+    views = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        unique_together = ("account", "post")
+        indexes = [models.Index(fields=["account", "last_seen"])]
+
+
+class Poll(models.Model):
+    """A poll attached to a post: 2-4 options, one vote per person."""
+    post = models.OneToOneField(Post, on_delete=models.CASCADE, related_name="poll")
+    ends_at = models.DateTimeField()
+    # Trivia-style polls reveal which option is right once you've voted.
+    correct_option = models.ForeignKey(
+        "PollOption", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    def __str__(self):
+        return f"Poll on post {self.post_id}"
+
+
+class PollOption(models.Model):
+    poll = models.ForeignKey(Poll, on_delete=models.CASCADE, related_name="options")
+    text = models.CharField(max_length=80)
+    position = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["position", "id"]
+
+    def __str__(self):
+        return self.text
+
+
+class PollVote(models.Model):
+    poll = models.ForeignKey(Poll, on_delete=models.CASCADE, related_name="votes")
+    option = models.ForeignKey(PollOption, on_delete=models.CASCADE, related_name="votes")
+    account = models.ForeignKey(Account, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("poll", "account")

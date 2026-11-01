@@ -1,7 +1,21 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
-import { ArrowLeft, Download, Loader2, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  BookOpen,
+  ChevronRight,
+  Download,
+  FileText,
+  Loader2,
+  LogOut,
+  Mail,
+  Shield,
+  Star,
+  SunMoon,
+  Trash2,
+  UserRound,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +35,49 @@ import {
   useDeleteMyAccountMutation,
   useExportMyDataMutation,
 } from "@/redux/services/accounts/accounts";
-import LegalLinks from "@/features/legal/components/LegalLinks";
+import LogoutConfirmDialog from "@/components/layout/LogoutConfirmDialog";
+import { useTheme } from "@/components/themes/theme-provider";
+import { Avatar } from "@/features/discover/components/PersonRow";
+
+/** A titled group of rows, separated by thin lines. */
+const Group = ({ title, children }: { title?: string; children: React.ReactNode }) => (
+  <section className="mt-6">
+    {title && (
+      <h2 className="mb-1 px-2 text-xs font-medium text-[var(--color-subtitle)]">{title}</h2>
+    )}
+    <div className="divide-y divide-[var(--border-color,rgba(127,127,127,0.15))]">{children}</div>
+  </section>
+);
+
+type RowProps = {
+  icon: React.ElementType;
+  iconClass?: string;
+  label: string;
+  detail?: string;
+  to?: string;
+  onClick?: () => void;
+  tone?: "default" | "danger";
+};
+
+/** One settings row: icon, label, optional detail, chevron when it goes somewhere. */
+const Row = ({ icon: Icon, iconClass = "", label, detail, to, onClick, tone = "default" }: RowProps) => {
+  const danger = tone === "danger";
+  const body = (
+    <>
+      <Icon
+        className={`h-5 w-5 shrink-0 ${danger ? "text-red-500" : "text-[var(--color-subtitle)]"} ${iconClass}`}
+      />
+      <span className={`flex-1 text-sm ${danger ? "text-red-500" : ""}`}>{label}</span>
+      {detail && <span className="truncate text-sm text-[var(--color-subtitle)]">{detail}</span>}
+      {(to || onClick) && <ChevronRight className="h-4 w-4 shrink-0 text-[var(--color-subtitle)]" />}
+    </>
+  );
+  const cls = "flex w-full items-center gap-3 rounded-lg px-2 py-3 text-left";
+  const hover = " cursor-pointer hover:bg-[var(--button-hover-bg-color)]";
+  if (to) return <Link to={to} className={cls + hover}>{body}</Link>;
+  if (onClick) return <button type="button" onClick={onClick} className={cls + hover}>{body}</button>;
+  return <div className={cls}>{body}</div>;
+};
 
 const CONFIRM_WORD = "DELETE";
 
@@ -38,6 +94,8 @@ const SettingsPage = () => {
     useDeleteMyAccountMutation();
 
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [logoutOpen, setLogoutOpen] = useState(false);
+  const { theme, setTheme } = useTheme();
   const [password, setPassword] = useState("");
   const [confirmText, setConfirmText] = useState("");
   const [deleteError, setDeleteError] = useState("");
@@ -98,63 +156,98 @@ const SettingsPage = () => {
     }
   };
 
+  const me = user?.user ?? {};
+  const name = [me.firstname, me.lastname].filter(Boolean).join(" ") || username;
+
   return (
-    <div className="min-h-screen w-full px-4 py-10">
-      <div className="mx-auto w-full max-w-2xl">
+    <div className="min-h-screen w-full px-4 py-6 sm:py-10">
+      <div className="mx-auto w-full max-w-xl">
+        <div className="mb-6 flex items-center gap-2">
+          <Link
+            to="/"
+            aria-label="Back to home"
+            className="-ml-2 flex h-9 w-9 items-center justify-center rounded-full text-[var(--color-subtitle)] hover:bg-[var(--button-hover-bg-color)] hover:text-[var(--title-color)]"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+          <h1 className="text-xl font-bold text-[var(--title-color)]">Settings</h1>
+        </div>
+
+        {/* You */}
         <Link
-          to="/"
-          className="mb-6 inline-flex items-center gap-2 text-sm text-[var(--color-subtitle)] hover:text-[var(--title-color)]"
+          to={`/profile/${me.account_id}`}
+          className="flex items-center gap-3 rounded-xl px-2 py-3 hover:bg-[var(--button-hover-bg-color)]"
         >
-          <ArrowLeft className="h-4 w-4" /> Back to home
+          <Avatar src={me.profile_photo} alt={username} className="h-14 w-14" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-semibold">{name}</p>
+            <p className="truncate text-sm text-[var(--color-subtitle)]">@{username}</p>
+          </div>
+          <ChevronRight className="h-4 w-4 text-[var(--color-subtitle)]" />
         </Link>
-        <h1 className="text-2xl font-bold text-[var(--title-color)]">
-          Settings
-        </h1>
-        <p className="mt-1 text-sm text-[var(--color-subtitle)]">
-          Signed in as @{username}
-        </p>
 
-        <section className="mt-8 rounded-xl bg-[var(--home-card)] p-6">
-          <h2 className="font-semibold">Your data</h2>
-          <p className="mt-1 text-sm text-[var(--color-subtitle)]">
-            Download a copy of your profile, posts, comments, glows and
-            friends as a JSON file.
-          </p>
-          <Button
-            variant="outline"
-            className="mt-4 cursor-pointer"
-            onClick={handleExport}
-            disabled={isExporting}
-          >
-            {isExporting ? (
-              <Loader2 className="animate-spin" />
-            ) : (
-              <Download />
-            )}
-            Download my data
-          </Button>
-        </section>
+        <Group title="Account">
+          <Row icon={UserRound} label="Edit profile" to={`/profile/${me.account_id}`} />
+          <Row icon={Mail} label="Email" detail={me.email || "Not set"} />
+          <Row icon={Star} label="Close friends" to="/friends" />
+        </Group>
 
-        <section className="mt-4 rounded-xl border border-red-500/40 bg-[var(--home-card)] p-6">
-          <h2 className="font-semibold text-red-500">Delete account</h2>
-          <p className="mt-1 text-sm text-[var(--color-subtitle)]">
-            Permanently delete your account, profile, posts, photos, comments
-            and glows. This can't be undone.
-          </p>
-          <Button
-            variant="destructive"
-            className="mt-4 cursor-pointer"
+        <Group title="Appearance">
+          <div className="flex items-center gap-3 px-2 py-3">
+            <SunMoon className="h-5 w-5 text-[var(--color-subtitle)]" />
+            <span className="flex-1 text-sm">Theme</span>
+            <div className="flex rounded-lg border p-0.5 text-xs">
+              {(["light", "dark", "system"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTheme(t)}
+                  aria-pressed={theme === t}
+                  className={`cursor-pointer rounded-md px-3 py-1 capitalize transition-colors ${
+                    theme === t
+                      ? "bg-[var(--button-hover-bg-color)] font-medium text-[var(--title-color)]"
+                      : "text-[var(--color-subtitle)] hover:text-[var(--title-color)]"
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+        </Group>
+
+        <Group title="Your information">
+          <Row
+            icon={isExporting ? Loader2 : Download}
+            iconClass={isExporting ? "animate-spin" : ""}
+            label="Download your data"
+            detail="JSON"
+            onClick={isExporting ? undefined : handleExport}
+          />
+        </Group>
+
+        <Group title="About">
+          <Row icon={FileText} label="Terms of Service" to="/terms" />
+          <Row icon={Shield} label="Privacy Policy" to="/privacy" />
+          <Row icon={BookOpen} label="Community Guidelines" to="/guidelines" />
+        </Group>
+
+        <Group>
+          <Row icon={LogOut} label="Log out" onClick={() => setLogoutOpen(true)} />
+          <Row
+            icon={Trash2}
+            label="Delete account"
+            tone="danger"
             onClick={() => setDeleteOpen(true)}
-          >
-            <Trash2 /> Delete my account
-          </Button>
-        </section>
+          />
+        </Group>
 
-        <section className="mt-4 rounded-xl bg-[var(--home-card)] p-6">
-          <h2 className="font-semibold">Legal</h2>
-          <LegalLinks className="mt-3 text-sm" />
-        </section>
+        <p className="mt-8 px-2 pb-6 text-xs text-[var(--color-subtitle)]">
+          © {new Date().getFullYear()} Glow
+        </p>
       </div>
+
+      <LogoutConfirmDialog open={logoutOpen} onOpenChange={setLogoutOpen} />
 
       <Dialog open={deleteOpen} onOpenChange={resetDeleteForm}>
         <DialogContent className="bg-[var(--home-card)]">

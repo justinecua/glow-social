@@ -370,6 +370,7 @@ def getProfile(profile_id, viewer_user_id=None):
                 SELECT
                     a.id, a.firstname, a.lastname, a.gender, a.bio,
                     a.profile_photo, a.cover_photo, a.is_online, a.last_activity,
+                    COALESCE(a.is_bot, FALSE) AS is_bot,
                     u.id AS auth_user_id, u.username, u.date_joined,
                     u.email, a.birthday
                 FROM glow.accounts_account a

@@ -144,8 +144,9 @@ db_postgre.json
 .env.*
 !.env.example
 
-# PgBouncer auth file (contains password hashes); pgbouncer.ini is safe
+# PgBouncer config and auth file (both contain credentials)
 userlist.txt
+pgbouncer.ini
 
 # Django collected static files and user uploads
 staticfiles/

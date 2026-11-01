@@ -43,18 +43,24 @@ const Sentence = ({ n }: { n: Notif }) => {
       const quote = n.content.match(/[“"](.*)[”"]$/)?.[1];
       return (
         <>
-          {who} sent you a glow
+          {who} sent you kudos
           {quote && <span className="text-[var(--color-subtitle)]"> “{quote}”</span>}
         </>
       );
     }
+    case "friends_posted":
+      return <>{n.content}</>;
     default:
       return <>{n.content}</>;
   }
 };
 
 const href = (n: Notif) =>
-  n.notif_type === "glow_note" ? `/profile/${n.notif_to_id}?tab=glows` : `/profile/${n.notif_from_id}`;
+  n.notif_type === "glow_note"
+    ? `/profile/${n.notif_to_id}?tab=glows`
+    : n.notif_type === "friends_posted"
+      ? "/"
+      : `/profile/${n.notif_from_id}`;
 
 const NotifLeftBar = forwardRef<HTMLDivElement, { onNavigate?: () => void; leftOffset?: string }>(({ onNavigate, leftOffset = "21rem" }, ref) => {
   const user = useStoredUser();

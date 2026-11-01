@@ -1,0 +1,62 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-glow}
+      POSTGRES_USER: ${DB_USER:-glow}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-glow}
+      TZ: Asia/Manila
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-glow}
+      DB_USER: ${DB_USER:-glow}
+      DB_PASSWORD: ${DB_PASSWORD:-glow}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      TZ: Asia/Manila
+    volumes:
+      - media:/app/media
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_HOST: ${VITE_HOST:-http://localhost:8000}
+        VITE_WS_HOST: ${VITE_WS_HOST:-ws://localhost:8000}
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  redis_data:
+  media:

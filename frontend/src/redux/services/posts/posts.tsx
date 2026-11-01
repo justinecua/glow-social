@@ -13,14 +13,38 @@ export const receivedApi = api.enhanceEndpoints({ addTagTypes: ["Posts"] }).inje
       keepUnusedDataFor: 3600,
     }),
     getPosts: builder.query({
-      query: ({ offset = 0, limit = 5 }) => ({
-        url: `posts/getPosts/?offset=${offset}&limit=${limit}`,
+      query: ({ offset = 0, limit = 5, seed }: { offset?: number; limit?: number; seed?: number }) => ({
+        url: `posts/getPosts/?offset=${offset}&limit=${limit}${seed ? `&seed=${seed}` : ""}`,
         method: "GET",
         timeout,
       }),
       providesTags: ["Posts"],
       transformResponse: (response) => response,
       transformErrorResponse: (response) => response,
+    }),
+    // Posts shared since the feed was opened (for the "New posts" pill).
+    getNewPostsCount: builder.query({
+      query: ({ seed }: { seed: number }) => ({
+        url: `posts/new/?seed=${seed}`,
+        method: "GET",
+        timeout,
+      }),
+    }),
+    // Posts that appeared on screen, so the feed can show new ones next time.
+    markSeen: builder.mutation({
+      query: (ids: number[]) => ({ url: `posts/seen/`, method: "POST", body: { ids }, timeout }),
+    }),
+    votePoll: builder.mutation({
+      query: ({ post_id, option_id }: { post_id: number; option_id: number }) => ({
+        url: `posts/${post_id}/vote/`,
+        method: "POST",
+        body: { option_id },
+        timeout,
+      }),
+    }),
+    getTodayPrompt: builder.query({
+      query: () => ({ url: `posts/prompt/today/`, method: "GET", timeout }),
+      keepUnusedDataFor: 300,
     }),
     getComments: builder.query({
       query: ({ post_id }) => ({
@@ -104,6 +128,8 @@ export const receivedApi = api.enhanceEndpoints({ addTagTypes: ["Posts"] }).inje
 export const {
   useGetLinkPreviewQuery,
   useGetPostsQuery,
+  useVotePollMutation,
+  useGetTodayPromptQuery,
   useGetCommentsQuery,
   useGetPostsByUserQuery,
   useGetTotalGlowsPostByUserQuery,
