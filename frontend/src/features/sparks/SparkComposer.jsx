@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Image as ImageIcon,
   Loader2,
@@ -19,14 +19,6 @@ import { Avatar } from "@/features/discover/components/PersonRow";
 const MAX_BYTES = 8 * 1024 * 1024;
 const ACCEPT = "image/jpeg,image/png,image/gif,image/webp";
 
-const readAsDataUrl = (file) =>
-  new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onloadend = () => resolve(r.result);
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
-
 /** Share a spark: a photo with an optional caption, or words on a colour.
  *  The preview is the same card friends will see. */
 const SparkComposer = ({ open, onOpenChange }) => {
@@ -39,6 +31,9 @@ const SparkComposer = ({ open, onOpenChange }) => {
   const fileInput = useRef(null);
   const [create, { isLoading }] = useCreateSparkMutation();
   const me = useStoredUser()?.user;
+  // Preview the picked File without reading it into memory as base64.
+  const photoUrl = useMemo(() => (photo ? URL.createObjectURL(photo) : null), [photo]);
+  useEffect(() => () => photoUrl && URL.revokeObjectURL(photoUrl), [photoUrl]);
 
   useEffect(() => {
     if (!open) return;
@@ -55,7 +50,7 @@ const SparkComposer = ({ open, onOpenChange }) => {
       return toast.error("Use a JPG, PNG, GIF or WebP image.");
     if (file.size > MAX_BYTES)
       return toast.error("Photos must be 8 MB or smaller.");
-    setPhoto(await readAsDataUrl(file));
+    setPhoto(file);
     setMode("photo");
   };
 
@@ -66,7 +61,14 @@ const SparkComposer = ({ open, onOpenChange }) => {
     try {
       await create(
         mode === "photo"
-          ? { photo: photo, text: text.trim(), close_friends_only: closeOnly }
+          ? (() => {
+              // Multipart: the photo goes as a real file.
+              const form = new FormData();
+              form.append("photo", photo, photo.name);
+              form.append("text", text.trim());
+              form.append("close_friends_only", String(closeOnly));
+              return form;
+            })()
           : {
               text: text.trim(),
               background: bg,
@@ -166,8 +168,8 @@ const SparkComposer = ({ open, onOpenChange }) => {
             ) : mode === "photo" ? (
               <>
                 <img
-                  key={photo.length}
-                  src={photo}
+                  key={photoUrl}
+                  src={photoUrl}
                   alt="Your photo"
                   className="h-full w-full animate-in fade-in object-contain duration-300"
                 />

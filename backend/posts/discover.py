@@ -14,7 +14,18 @@ from .visibility import audience_ids, visible_sql
 EXPLORE_CACHE_SECONDS = 120
 
 # Same shape as the main feed so the frontend can reuse its post components.
-POST_SELECT = """
+#
+# One row per post, no fan-out: counts come from the trigger-maintained
+# columns, photos from a correlated subquery, and "did I glow this" from a
+# lookup on the (account, post) unique index. The old version joined photos x
+# glows x comments and GROUP BY'd them back down, which multiplied rows per
+# post (4 photos x 200 glows x 50 comments = 40,000 rows for one post).
+def post_select(viewer):
+    """SELECT ... FROM for posts. `viewer` is the SQL placeholder for the
+    viewer's account id (e.g. "%s" or "%(viewer)s"); NULL means anonymous.
+    `glowers` is [viewer] if they glowed it, else [] (the frontend only
+    checks whether it contains you; the full list is no longer sent)."""
+    return f"""
     SELECT
         p.id,
         p.account_id,
@@ -25,22 +36,21 @@ POST_SELECT = """
         a.lastname,
         a.profile_photo,
         COALESCE(a.is_bot, FALSE) AS is_bot,
-        COUNT(DISTINCT glows.id) AS glow_count,
-        COUNT(DISTINCT comments.id) AS comment_count,
-        ARRAY_AGG(DISTINCT ph.link) AS photos,
-        ARRAY_AGG(DISTINCT glows.account_id) AS glowers,
+        p.glow_count,
+        p.comment_count,
+        ARRAY(
+            SELECT ph.link FROM glow.glow.posts_photo ph
+            WHERE ph.post_id = p.id ORDER BY ph.id
+        ) AS photos,
+        ARRAY(
+            SELECT g.account_id FROM glow.glow.interactions_glow g
+            WHERE g.post_id = p.id AND g.account_id = {viewer}
+        ) AS glowers,
         COALESCE(aud.key, 'public') AS audience
     FROM glow.glow.posts_post AS p
     LEFT JOIN glow.glow.posts_audience AS aud ON aud.id = p.audience_id
     LEFT JOIN glow.glow.accounts_account AS a ON p.account_id = a.id
     LEFT JOIN glow.glow.auth_user AS u ON a.auth_user_id = u.id
-    LEFT JOIN glow.glow.posts_photo AS ph ON p.id = ph.post_id
-    LEFT JOIN glow.glow.interactions_glow AS glows ON p.id = glows.post_id
-    LEFT JOIN glow.glow.interactions_comment AS comments ON p.id = comments.post_id
-"""
-POST_GROUP = """
-    GROUP BY p.id, p.account_id, p.caption, p."dateTime",
-             u.username, a.firstname, a.lastname, a.profile_photo, a.is_bot, aud.key
 """
 
 
@@ -64,15 +74,15 @@ def _clean_posts(rows, request):
     return rows
 
 
-def _posts(where="", params=(), order='p."dateTime" DESC', limit=12, having="",
+def _posts(where="", params=(), order='p."dateTime" DESC', limit=12,
            request=None, viewer_id=None):
     """Posts matching `where`, limited to what `viewer_id` may see. With no
     viewer (Explore, search, share previews) only public posts are returned."""
     vis, vis_params = visible_sql(viewer_id)
     where = f"{where} AND {vis}" if where else f"WHERE {vis}"
-    sql = f"{POST_SELECT} {where} {POST_GROUP} {having} ORDER BY {order} LIMIT %s"
+    sql = f"{post_select('%s')} {where} ORDER BY {order} LIMIT %s"
     with connections["default"].cursor() as cursor:
-        cursor.execute(sql, (*params, *vis_params, limit))
+        cursor.execute(sql, (viewer_id, *params, *vis_params, limit))
         rows = _rows(cursor)
     return attach_polls(_clean_posts(rows, request), viewer_id)
 
@@ -80,7 +90,7 @@ def _posts(where="", params=(), order='p."dateTime" DESC', limit=12, having="",
 def _trending(request, days=30, limit=12):
     """Most engaged posts recently (glows count double), newest first on ties.
     Falls back to all-time if the last `days` are quiet."""
-    order = 'COUNT(DISTINCT glows.id) * 2 + COUNT(DISTINCT comments.id) DESC, p."dateTime" DESC'
+    order = 'p.glow_count * 2 + p.comment_count DESC, p."dateTime" DESC'
     since = datetime.now(pytz.utc) - timedelta(days=days)
     posts = _posts('WHERE p."dateTime" >= %s', (since,), order=order, limit=limit, request=request)
     if len(posts) < 6:
@@ -130,28 +140,31 @@ def _tags(limit=8):
 
 
 def _active_people(limit=8, days=60):
-    """People who've posted most recently/often: good accounts to discover."""
+    """People who've posted most in the last `days`: good accounts to
+    discover. Only recent posts are aggregated (post_datetime_idx range
+    scan), so the cost tracks recent activity, not all-time post volume."""
     since = datetime.now(pytz.utc) - timedelta(days=days)
     with connections["default"].cursor() as cursor:
         cursor.execute(
             """
             SELECT a.id, u.username, a.firstname, a.lastname, a.profile_photo,
-                   COUNT(p.id) FILTER (WHERE p."dateTime" >= %s) AS recent_posts,
-                   COUNT(p.id) AS total_posts,
-                   MAX(p."dateTime") AS last_post
-            FROM glow.glow.accounts_account a
+                   r.recent_posts
+            FROM (
+                SELECT account_id, COUNT(*) AS recent_posts, MAX("dateTime") AS last_post
+                FROM glow.glow.posts_post
+                WHERE "dateTime" >= %s
+                GROUP BY account_id
+            ) r
+            JOIN glow.glow.accounts_account a ON a.id = r.account_id
             JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
-            JOIN glow.glow.posts_post p ON p.account_id = a.id
             WHERE u.is_active
-            GROUP BY a.id, u.username, a.firstname, a.lastname, a.profile_photo
-            ORDER BY recent_posts DESC, total_posts DESC, last_post DESC
+            ORDER BY r.recent_posts DESC, r.last_post DESC
             LIMIT %s
             """,
             (since, limit),
         )
         people = _rows(cursor)
     for p in people:
-        p.pop("last_post", None)
         for k in ("firstname", "lastname", "profile_photo"):
             p[k] = p.get(k) or ""
     return people
@@ -229,7 +242,6 @@ def search(q, request, limit=20):
 
 # ---------------------------------------------------------------- feed
 FRIEND_WINDOW_DAYS = 14   # friends' posts this recent are pinned to the top
-FRESH_WINDOW_DAYS = 7     # anything newer than this counts as "new"
 
 
 def friend_ids(account_id):
@@ -270,26 +282,47 @@ BOT_PENALTY = 1.0
 SHUFFLE_WEIGHT = 2.0
 
 
-def feed(request, viewer_id=None, offset=0, limit=7, seed=None, anchor=None):
-    """Home feed, ranked like the big social apps (see weights above).
+# Candidates: only these posts are scored, so a feed page costs about the
+# same with 1k posts or 10M. Each set is small and index-friendly:
+CIRCLE_CANDIDATE_DAYS = 60   # you/friends' posts this recent (all of them)
+HOT_DAYS = 3                 # + the HOT_POOL most-engaged posts this recent
+HOT_POOL = 400
+NEWEST_POOL = 200            # + the newest posts from anyone
+EVERGREEN_POOL = 200         # + the most-engaged posts of all time (cached)
+MAX_RANKED = 1000            # ranked list per visit is capped here
+RANK_CACHE_SECONDS = 10 * 60
+EVERGREEN_CACHE_SECONDS = 10 * 60
 
-    `seed` changes on each visit, giving a new mix; within a visit it is
-    fixed. `anchor` freezes "now" for the visit: newer posts are left out
-    (the "New posts" pill announces them) and ages are measured from it."""
-    now = datetime.now(pytz.utc)
-    anchor = min(anchor or now, now)
-    seed = str(seed or "0")[:32]
+
+def _evergreen_ids():
+    """Most engaged posts ever. Cached; shared by every viewer (visibility
+    is still checked per viewer when ranking)."""
+    ids = cache.get("feed:evergreen:v1")
+    if ids is None:
+        with connections["default"].cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id FROM glow.glow.posts_post
+                ORDER BY glow_count + 2 * comment_count DESC, id DESC
+                LIMIT %s
+                """,
+                (EVERGREEN_POOL,),
+            )
+            ids = [r[0] for r in cursor.fetchall()]
+        cache.set("feed:evergreen:v1", ids, EVERGREEN_CACHE_SECONDS)
+    return ids
+
+
+def _ranked_ids(viewer_id, seed, anchor):
+    """Step 1: score candidate posts on cheap columns only and return their
+    ids, best first. Cached per visit (viewer + seed + anchor), so scrolling
+    pages through a fixed list instead of re-ranking each time."""
+    key = f"feed:rank:v1:{viewer_id or 0}:{seed}:{int(anchor.timestamp())}"
+    ids = cache.get(key)
+    if ids is not None:
+        return ids
+
     circle = friend_ids(viewer_id) + ([viewer_id] if viewer_id else [])
-
-    select = POST_SELECT.replace(
-        "SELECT",
-        """SELECT
-        (p.account_id = ANY(%(circle)s) AND p."dateTime" >= %(friend_since)s) AS from_friends,
-        ((p.account_id = ANY(%(circle)s) AND p."dateTime" >= %(friend_since)s)
-            OR p."dateTime" >= %(fresh_since)s) AS is_fresh,
-        p.account_id = ANY(%(circle)s) AS in_circle,""",
-        1,
-    )
     vis, vis_params = visible_sql(viewer_id)
     for i in range(len(vis_params)):  # positional %s -> named params
         vis = vis.replace("%s", f"%(vis{i})s", 1)
@@ -297,18 +330,38 @@ def feed(request, viewer_id=None, offset=0, limit=7, seed=None, anchor=None):
         "viewer": viewer_id or -1,
         "circle": circle,
         "friend_since": anchor - timedelta(days=FRIEND_WINDOW_DAYS),
-        "fresh_since": anchor - timedelta(days=FRESH_WINDOW_DAYS),
+        "circle_since": anchor - timedelta(days=CIRCLE_CANDIDATE_DAYS),
+        "hot_since": anchor - timedelta(days=HOT_DAYS),
+        "hot_pool": HOT_POOL,
+        "newest_pool": NEWEST_POOL,
+        "evergreen": _evergreen_ids(),
         "affinity_since": anchor - timedelta(days=90),
         "anchor": anchor,
         "seed": seed,
-        "offset": offset,
-        "limit": limit,
+        "max": MAX_RANKED,
         **{f"vis{i}": v for i, v in enumerate(vis_params)},
     }
-    age_h = 'GREATEST(0, EXTRACT(EPOCH FROM (%(anchor)s - f."dateTime")) / 3600.0)'
-    engagement = "LN(1 + f.glow_count + 2 * f.comment_count)"
+    age_h = 'GREATEST(0, EXTRACT(EPOCH FROM (%(anchor)s - p."dateTime")) / 3600.0)'
+    engagement = "LN(1 + p.glow_count + 2 * p.comment_count)"
     sql = f"""
-        WITH affinity AS (
+        WITH candidates AS (
+            SELECT id FROM glow.glow.posts_post
+            WHERE account_id = ANY(%(circle)s)
+              AND "dateTime" >= %(circle_since)s AND "dateTime" <= %(anchor)s
+            UNION
+            (SELECT id FROM glow.glow.posts_post
+             WHERE "dateTime" >= %(hot_since)s AND "dateTime" <= %(anchor)s
+             ORDER BY glow_count + 2 * comment_count DESC
+             LIMIT %(hot_pool)s)
+            UNION
+            (SELECT id FROM glow.glow.posts_post
+             WHERE "dateTime" <= %(anchor)s
+             ORDER BY "dateTime" DESC
+             LIMIT %(newest_pool)s)
+            UNION
+            SELECT UNNEST(%(evergreen)s::int[])
+        ),
+        affinity AS (
             SELECT po.account_id AS author, COUNT(*) AS n
             FROM (
                 SELECT post_id FROM glow.glow.interactions_glow
@@ -321,32 +374,92 @@ def feed(request, viewer_id=None, offset=0, limit=7, seed=None, anchor=None):
             WHERE po.account_id <> %(viewer)s
             GROUP BY po.account_id
         )
-        SELECT f.* FROM (
-            {select}
-            WHERE {vis} AND p."dateTime" <= %(anchor)s
-            {POST_GROUP}
-        ) f
-        LEFT JOIN affinity af ON af.author = f.account_id
+        SELECT p.id
+        FROM candidates cand
+        JOIN glow.glow.posts_post p ON p.id = cand.id
+        LEFT JOIN glow.glow.accounts_account a ON a.id = p.account_id
+        LEFT JOIN affinity af ON af.author = p.account_id
         LEFT JOIN glow.glow.posts_postseen seen
-               ON seen.post_id = f.id AND seen.account_id = %(viewer)s
+               ON seen.post_id = p.id AND seen.account_id = %(viewer)s
+        WHERE p."dateTime" <= %(anchor)s
+          AND {vis}
         ORDER BY (
               {FRESH_WEIGHT} * POWER(0.5, {age_h} / {FRESH_HALF_LIFE_H})
             + {VELOCITY_WEIGHT} * {engagement} / POWER(1 + {age_h} / 24.0, 0.8)
             + {EVERGREEN_WEIGHT} * {engagement}
-            + CASE WHEN f.from_friends THEN {FRIEND_RECENT_BOOST}
-                   WHEN f.in_circle THEN {FRIEND_ANY_BOOST} ELSE 0 END
+            + CASE WHEN p.account_id = ANY(%(circle)s) AND p."dateTime" >= %(friend_since)s
+                        THEN {FRIEND_RECENT_BOOST}
+                   WHEN p.account_id = ANY(%(circle)s) THEN {FRIEND_ANY_BOOST} ELSE 0 END
             + {AFFINITY_WEIGHT} * LN(1 + COALESCE(af.n, 0))
             - CASE WHEN seen.first_seen < %(anchor)s THEN {SEEN_PENALTY} ELSE 0 END
-            - CASE WHEN f.is_bot THEN {BOT_PENALTY} ELSE 0 END
-            + {SHUFFLE_WEIGHT} * (('x' || SUBSTR(MD5(f.id::text || ':' || %(seed)s), 1, 8))::bit(32)::bigint / 4294967295.0)
-        ) DESC, f.id DESC
-        OFFSET %(offset)s LIMIT %(limit)s
+            - CASE WHEN COALESCE(a.is_bot, FALSE) THEN {BOT_PENALTY} ELSE 0 END
+            + {SHUFFLE_WEIGHT} * (('x' || SUBSTR(MD5(p.id::text || ':' || %(seed)s), 1, 8))::bit(32)::bigint / 4294967295.0)
+        ) DESC, p.id DESC
+        LIMIT %(max)s
     """
     with connections["default"].cursor() as cursor:
         cursor.execute(sql, params)
-        rows = _rows(cursor)
-    for r in rows:
-        r.pop("in_circle", None)
+        ids = [r[0] for r in cursor.fetchall()]
+    cache.set(key, ids, RANK_CACHE_SECONDS)
+    return ids
+
+
+def _older_ids(viewer_id, anchor, exclude, offset, limit):
+    """After the ranked list runs out: everything else the viewer may see,
+    newest first, so scrolling never dead-ends while older posts exist."""
+    vis, vis_params = visible_sql(viewer_id)
+    with connections["default"].cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT p.id FROM glow.glow.posts_post p
+            WHERE p."dateTime" <= %s AND NOT (p.id = ANY(%s)) AND {vis}
+            ORDER BY p."dateTime" DESC, p.id DESC
+            OFFSET %s LIMIT %s
+            """,
+            [anchor, exclude, *vis_params, offset, limit],
+        )
+        return [r[0] for r in cursor.fetchall()]
+
+
+def _hydrate(ids, request, viewer_id):
+    """Step 2: full rows (author, photos, counts, "did I glow it") for just
+    the posts on this page, in the given order."""
+    if not ids:
+        return []
+    # Visibility is checked again here: the ranked list may be up to
+    # RANK_CACHE_SECONDS old, and a post could since have been deleted or
+    # switched to a narrower audience.
+    vis, vis_params = visible_sql(viewer_id)
+    with connections["default"].cursor() as cursor:
+        cursor.execute(
+            f"{post_select('%s')} WHERE p.id = ANY(%s) AND {vis}",
+            (viewer_id, ids, *vis_params),
+        )
+        by_id = {r["id"]: r for r in _rows(cursor)}
+    return [by_id[i] for i in ids if i in by_id]
+
+
+def feed(request, viewer_id=None, offset=0, limit=7, seed=None, anchor=None):
+    """Home feed, ranked like the big social apps (see weights above).
+
+    `seed` changes on each visit, giving a new mix; within a visit it is
+    fixed. `anchor` freezes "now" for the visit: newer posts are left out
+    (the "New posts" pill announces them) and ages are measured from it.
+
+    Two steps: rank recent candidates on cheap columns (cached per visit),
+    then hydrate only the page being shown. Past the ranked list, older
+    posts follow newest-first."""
+    now = datetime.now(pytz.utc)
+    anchor = min(anchor or now, now)
+    seed = str(seed or "0")[:32]
+
+    ranked = _ranked_ids(viewer_id, seed, anchor)
+    page = ranked[offset:offset + limit]
+    if len(page) < limit:
+        older_offset = max(0, offset - len(ranked))
+        page += _older_ids(viewer_id, anchor, ranked, older_offset, limit - len(page))
+
+    rows = _hydrate(page, request, viewer_id)
     return {"results": attach_polls(_spread_authors(_clean_posts(rows, request)), viewer_id)}
 
 
@@ -430,7 +543,68 @@ def single_post(post_id, request, viewer_id=None):
     return posts[0] if posts else None
 
 
-def posts_by_user(account_id, request, viewer_id=None, limit=500):
-    """A profile's posts, limited to what the viewer may see."""
-    return _posts("WHERE p.account_id = %s", (account_id,), limit=limit,
-                  request=request, viewer_id=viewer_id)
+PROFILE_PAGE = 12
+
+
+def _encode_cursor(dt, post_id):
+    return f"{dt.isoformat()}|{post_id}"
+
+
+def _decode_cursor(cursor):
+    try:
+        when, post_id = str(cursor).rsplit("|", 1)
+        return datetime.fromisoformat(when), int(post_id)
+    except (ValueError, TypeError):
+        return None
+
+
+def posts_by_user(account_id, request, viewer_id=None, limit=PROFILE_PAGE, before=None):
+    """A profile's posts the viewer may see, newest first, `limit` at a time.
+    `before` is the `next` cursor from the previous page. Returns
+    {"results", "next" (None at the end), "counts"} where counts are the
+    real totals for the Posts / Photos / Thoughts tabs."""
+    vis, vis_params = visible_sql(viewer_id)
+    where, params = 'WHERE p.account_id = %s', [account_id]
+    cur = _decode_cursor(before) if before else None
+    if cur:
+        where += ' AND (p."dateTime", p.id) < (%s, %s)'
+        params += list(cur)
+    sql = (f'{post_select("%s")} {where} AND {vis} '
+           'ORDER BY p."dateTime" DESC NULLS LAST, p.id DESC LIMIT %s')
+    with connections["default"].cursor() as cursor:
+        cursor.execute(sql, [viewer_id, *params, *vis_params, limit + 1])
+        rows = _rows(cursor)
+    more = len(rows) > limit
+    rows = rows[:limit]
+    last = rows[-1] if rows else None
+    next_cursor = (_encode_cursor(last["dateTime"], last["id"])
+                   if more and last and isinstance(last.get("dateTime"), datetime) else None)
+    results = attach_polls(_clean_posts(rows, request), viewer_id)
+    return {
+        "results": results,
+        "next": next_cursor,
+        # Totals only on the first page (later pages don't need them).
+        "counts": None if before else profile_counts(account_id, viewer_id),
+    }
+
+
+def profile_counts(account_id, viewer_id=None):
+    """Posts / photos / text-only posts the viewer may see on this profile."""
+    vis, vis_params = visible_sql(viewer_id)
+    with connections["default"].cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT COUNT(*) AS posts,
+                   COALESCE(SUM(ph.n), 0) AS photos,
+                   COUNT(*) FILTER (WHERE COALESCE(ph.n, 0) = 0) AS thoughts
+            FROM glow.glow.posts_post p
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*) AS n FROM glow.glow.posts_photo x
+                WHERE x.post_id = p.id AND x.link <> ''
+            ) ph ON TRUE
+            WHERE p.account_id = %s AND {vis}
+            """,
+            [account_id, *vis_params],
+        )
+        posts, photos, thoughts = cursor.fetchone()
+    return {"posts": posts, "photos": int(photos), "thoughts": thoughts}

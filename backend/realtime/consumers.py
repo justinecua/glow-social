@@ -21,6 +21,10 @@ ACTIONS = {
     "unfriend": unfriend,
 }
 
+import logging
+
+log = logging.getLogger(__name__)
+
 class GlobalConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         # Identity comes from WebSocketAuthMiddleware (ticket or cookie),
@@ -33,7 +37,7 @@ class GlobalConsumer(AsyncWebsocketConsumer):
         self.room_group_name = f"user_{self.user_id}"
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
         await self.accept()
-        print(f"[WebSocket] User connected: user_id={self.user_id}")
+        log.debug("websocket connected: user_id=%s", self.user_id)
 
     async def disconnect(self, close_code):
         if getattr(self, "room_group_name", None):
@@ -140,6 +144,10 @@ class GlobalConsumer(AsyncWebsocketConsumer):
                     {"type": "chat_typing", "conversation_id": conversation_id,
                      "account_id": self.user_id},
                 )
+
+    async def posts_new(self, event):
+        # A friend posted: the app refreshes its "New posts" pill.
+        await self.send(text_data=json.dumps({"type": "posts_new"}))
 
     async def sparks_updated(self, event):
         """A friend posted or deleted a spark: the app refetches Today."""

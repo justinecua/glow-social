@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import GlowWall from "@/features/glows/GlowWall";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,26 +7,82 @@ import PostTopNav from "@/features/dashboard/components/Feed/PostTopNav";
 import PostCaptions from "@/features/dashboard/components/Feed/PostCaptions";
 import PostReactions from "@/features/dashboard/components/Feed/PostReactions";
 import PostPhotos from "@/features/dashboard/components/Feed/PostPhotos";
-import { BookOpen, FileText, Image, MessageSquare, User } from "lucide-react";
+import {
+  BookOpen,
+  FileText,
+  Image,
+  Loader2,
+  MessageSquare,
+  User,
+} from "lucide-react";
 import { Key, Edit3 } from "lucide-react";
 import PhotoDialog from "@/features/dashboard/components/modal/PhotoDialog";
 import { formatCount } from "@/lib/formatCount";
 
-const ProfileTabs = ({ item, posts, allPhotos }) => {
+/** Loads the next page when it scrolls into view (a bit before the end). */
+const LoadMore = ({ hasMore, loading, onLoadMore }) => {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !hasMore) return;
+    const io = new IntersectionObserver(
+      ([entry]) => entry.isIntersecting && onLoadMore?.(),
+      { rootMargin: "600px 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, onLoadMore]);
+  if (!hasMore) return null;
+  return (
+    <div
+      ref={ref}
+      className="flex justify-center py-6 text-[var(--color-subtitle)]"
+    >
+      {loading && (
+        <Loader2
+          className="h-5 w-5 animate-spin"
+          aria-label="Loading more posts"
+        />
+      )}
+    </div>
+  );
+};
+
+const ProfileTabs = ({
+  item,
+  posts,
+  allPhotos,
+  counts,
+  hasMore,
+  loadingMore,
+  onLoadMore,
+}) => {
   const [isDialogOpen, setDialogOpen] = useState(false);
   // ?tab=glows (e.g. from a glow notification) opens that tab directly
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") || "posts";
-  const setTab = (t) => setParams(t === "posts" ? {} : { tab: t }, { replace: true });
+  const setTab = (t) =>
+    setParams(t === "posts" ? {} : { tab: t }, { replace: true });
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(null);
 
   // Text-only posts.
-  const thoughts = posts.filter((post) => !post.photos || post.photos.length === 0);
+  const thoughts = posts.filter(
+    (post) => !post.photos || post.photos.length === 0,
+  );
 
   const TABS = [
-    { value: "posts", label: "Posts", count: posts.length },
-    { value: "photos", label: "Photos", count: allPhotos.length },
-    { value: "thoughts", label: "Thoughts", count: thoughts.length },
+    // Real totals from the server (posts load a page at a time).
+    { value: "posts", label: "Posts", count: counts?.posts ?? posts.length },
+    {
+      value: "photos",
+      label: "Photos",
+      count: counts?.photos ?? allPhotos.length,
+    },
+    {
+      value: "thoughts",
+      label: "Thoughts",
+      count: counts?.thoughts ?? thoughts.length,
+    },
     { value: "glows", label: "Kudos" },
     { value: "about", label: "About" },
   ];
@@ -46,7 +102,9 @@ const ProfileTabs = ({ item, posts, allPhotos }) => {
         {icon}
       </div>
       <h3 className="text-lg font-medium mb-2">{title}</h3>
-      <p className="text-sm text-[var(--color-subtitle)] max-w-md">{description}</p>
+      <p className="text-sm text-[var(--color-subtitle)] max-w-md">
+        {description}
+      </p>
     </div>
   );
 
@@ -92,7 +150,7 @@ const ProfileTabs = ({ item, posts, allPhotos }) => {
                 </div>
               ))}
             </div>
-          ) : (
+          ) : !hasMore ? (
             <div className="h-120 flex items-center justify-center">
               <EmptyState
                 icon={<FileText size={24} />}
@@ -100,7 +158,12 @@ const ProfileTabs = ({ item, posts, allPhotos }) => {
                 description={`When ${item?.username} shares something, it will appear here`}
               />
             </div>
-          )}
+          ) : null}
+          <LoadMore
+            hasMore={hasMore}
+            loading={loadingMore}
+            onLoadMore={onLoadMore}
+          />
 
           <PhotoDialog
             isOpen={isDialogOpen}
@@ -116,7 +179,10 @@ const ProfileTabs = ({ item, posts, allPhotos }) => {
             {allPhotos.length > 0 ? (
               <div className="justify-center grid xl:grid-cols-6 lg:grid-cols-4 md:grid-cols-3 sm:grid-cols-2 gap-4">
                 {allPhotos.map((photo, index) => (
-                  <div key={index} onClick={() => handlePhotoClick(null, index)}>
+                  <div
+                    key={index}
+                    onClick={() => handlePhotoClick(null, index)}
+                  >
                     <img
                       src={photo}
                       alt=""
@@ -135,6 +201,11 @@ const ProfileTabs = ({ item, posts, allPhotos }) => {
                 />
               </div>
             )}
+            <LoadMore
+              hasMore={hasMore}
+              loading={loadingMore}
+              onLoadMore={onLoadMore}
+            />
           </div>
 
           <PhotoDialog
@@ -155,7 +226,11 @@ const ProfileTabs = ({ item, posts, allPhotos }) => {
                     <CardContent>
                       <PostTopNav post={thought} />
                       <PostCaptions post={thought} />
-                      <PostPhotos post={thought} isModal={false} isProfile={true} />
+                      <PostPhotos
+                        post={thought}
+                        isModal={false}
+                        isProfile={true}
+                      />
                       <PostReactions item={thought} isProfile={false} />
                     </CardContent>
                   </Card>
@@ -171,6 +246,11 @@ const ProfileTabs = ({ item, posts, allPhotos }) => {
               />
             </div>
           )}
+          <LoadMore
+            hasMore={hasMore}
+            loading={loadingMore}
+            onLoadMore={onLoadMore}
+          />
         </TabsContent>
 
         {/* Glow Wall */}
@@ -192,7 +272,9 @@ const ProfileTabs = ({ item, posts, allPhotos }) => {
                 <div className="grid sm:grid-cols-2 gap-4">
                   {/* Name */}
                   <div className="space-y-1">
-                    <p className="text-sm text-[var(--color-subtitle)]">Full Name</p>
+                    <p className="text-sm text-[var(--color-subtitle)]">
+                      Full Name
+                    </p>
                     <p className="font-medium">
                       {item.firstname} {item.lastname}
                     </p>
@@ -200,14 +282,18 @@ const ProfileTabs = ({ item, posts, allPhotos }) => {
 
                   {/* Username */}
                   <div className="space-y-1">
-                    <p className="text-sm text-[var(--color-subtitle)]">Username</p>
+                    <p className="text-sm text-[var(--color-subtitle)]">
+                      Username
+                    </p>
                     <p className="font-medium">@{item.username}</p>
                   </div>
 
                   {/* Gender */}
                   {item.gender && (
                     <div className="space-y-1">
-                      <p className="text-sm text-[var(--color-subtitle)]">Gender</p>
+                      <p className="text-sm text-[var(--color-subtitle)]">
+                        Gender
+                      </p>
                       <p className="font-medium capitalize">{item.gender}</p>
                     </div>
                   )}
@@ -215,7 +301,9 @@ const ProfileTabs = ({ item, posts, allPhotos }) => {
                   {/* Birthday */}
                   {item.birthday && (
                     <div className="space-y-1">
-                      <p className="text-sm text-[var(--color-subtitle)]">Birthday</p>
+                      <p className="text-sm text-[var(--color-subtitle)]">
+                        Birthday
+                      </p>
                       <p className="font-medium">
                         {new Date(item.birthday).toLocaleDateString("en-US", {
                           year: "numeric",
@@ -239,14 +327,18 @@ const ProfileTabs = ({ item, posts, allPhotos }) => {
                   {/* Email: only returned by the API to the profile owner */}
                   {item.email && (
                     <div className="space-y-1">
-                      <p className="text-sm text-[var(--color-subtitle)]">Email</p>
+                      <p className="text-sm text-[var(--color-subtitle)]">
+                        Email
+                      </p>
                       <p className="font-medium break-all">{item.email}</p>
                     </div>
                   )}
 
                   {/* Joined Date */}
                   <div className="space-y-1">
-                    <p className="text-sm text-[var(--color-subtitle)]">Member Since</p>
+                    <p className="text-sm text-[var(--color-subtitle)]">
+                      Member Since
+                    </p>
                     <p className="font-medium">
                       {new Date(item.date_joined).toLocaleDateString("en-US", {
                         year: "numeric",
@@ -258,7 +350,9 @@ const ProfileTabs = ({ item, posts, allPhotos }) => {
 
                   {/* Status */}
                   <div className="space-y-1">
-                    <p className="text-sm text-[var(--color-subtitle)]">Status</p>
+                    <p className="text-sm text-[var(--color-subtitle)]">
+                      Status
+                    </p>
                     <p className="font-medium flex items-center gap-2">
                       {/* {item.is_online ? (
                         <>
@@ -287,7 +381,9 @@ const ProfileTabs = ({ item, posts, allPhotos }) => {
                     <BookOpen className="w-5 h-5" />
                     Bio
                   </h3>
-                  <p className="text-[var(--color-text)] whitespace-pre-line">{item.bio}</p>
+                  <p className="text-[var(--color-text)] whitespace-pre-line">
+                    {item.bio}
+                  </p>
                 </div>
               ) : (
                 <div className="p-6 bg-[var(--background)] rounded-xl shadow-sm text-center">

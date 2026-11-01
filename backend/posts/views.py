@@ -37,6 +37,14 @@ from .api.decorators import (
 )
 
 
+import json
+
+from GlowProject.media import MediaError, delete_media, read_image
+
+MAX_POST_PHOTOS = 10
+
+from .realtime import notify_new_post
+
 class GetPosts(APIView):
     permission_classes = (permissions.AllowAny,)
 
@@ -124,8 +132,14 @@ class GetPostsByUser(APIView):
     def get(self, request, account_id):
         # Only the posts this viewer is allowed to see (friends / close
         # friends / only me are filtered out for everyone else).
-        posts = posts_by_user(account_id, request, viewer_account_id(request))
-        return Response({"results": posts})
+        try:
+            limit = min(50, max(1, int(request.query_params.get("limit", 12))))
+        except ValueError:
+            limit = 12
+        return Response(posts_by_user(
+            account_id, request, viewer_account_id(request),
+            limit=limit, before=request.query_params.get("before"),
+        ))
 
 class CreatePost(APIView):
     permission_classes = (permissions.IsAuthenticated,)
@@ -138,8 +152,24 @@ class CreatePost(APIView):
             audience_key = "public"
         audience = audience_id(audience_key)
         caption = request.data.get("caption")
-        photos = request.data.get("photos", [])
+        # Photos: multipart files ("photos"), or legacy JSON [{origurl: dataURL}].
+        sources = request.FILES.getlist("photos") or [
+            (p or {}).get("origurl") for p in (request.data.get("photos") or [])
+            if isinstance(p, dict)
+        ]
+        if len(sources) > MAX_POST_PHOTOS:
+            return Response({"detail": f"Up to {MAX_POST_PHOTOS} photos per post."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            photos = [read_image(src) for src in sources]
+        except MediaError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         taglist = request.data.get("taglist", [])
+        if isinstance(taglist, str):  # multipart sends JSON fields as strings
+            try:
+                taglist = json.loads(taglist)
+            except ValueError:
+                taglist = []
         if not isinstance(taglist, list):
             taglist = []
         # #hashtags typed in the caption become tags too (prompt answers etc.)
@@ -147,6 +177,11 @@ class CreatePost(APIView):
         taglist = list(dict.fromkeys([str(t)[:50] for t in taglist] + found))[:10]
 
         poll_in = request.data.get("poll")
+        if isinstance(poll_in, str):
+            try:
+                poll_in = json.loads(poll_in)
+            except ValueError:
+                poll_in = None
         options = None
         if poll_in:
             try:
@@ -157,6 +192,7 @@ class CreatePost(APIView):
         data = create_post(accID, audience, caption, photos, taglist, request=request)
         if isinstance(data, dict) and data.get("id"):
             bump_explore()
+            notify_new_post(accID, audience_key)
             data["audience"] = audience_key
             data["poll"] = None
             if options:
@@ -209,16 +245,9 @@ class PostDetail(APIView):
         if not post:
             return Response({"detail": "Post not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Remove uploaded photo files from disk (best effort).
-        import os
-        from django.conf import settings
+        # Remove uploaded photo files (local disk or object storage; best effort).
         for link in post.photo_set.values_list("link", flat=True):
-            if link and link.startswith(settings.MEDIA_URL):
-                path = os.path.join(settings.MEDIA_ROOT, link[len(settings.MEDIA_URL):].lstrip("/"))
-                try:
-                    os.remove(path)
-                except OSError:
-                    pass
+            delete_media(link)
         post.delete()
         bump_explore()
         return Response(status=status.HTTP_204_NO_CONTENT)

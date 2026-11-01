@@ -67,30 +67,16 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
     if (!pollValid) return;
 
     try {
-      const base64Images = await Promise.all(
-        images.map((img) => {
-          return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              resolve({
-                name: img.name,
-                origurl: reader.result,
-              });
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(img);
-          });
-        })
-      );
-
-      const payload = {
-        accID: user?.user?.account_id,
-        audience,
-        caption: text,
-        photos: base64Images,
-        taglist: prompt ? [prompt.tag] : [],
-        ...(pollOn ? { poll: { options: filledOptions, hours: pollHours } } : {}),
-      };
+      // Multipart upload: photos go as real files (no base64 bloat, ~25%
+      // smaller); other fields as form values, nested ones as JSON.
+      const payload = new FormData();
+      payload.append("audience", audience);
+      payload.append("caption", text);
+      images.forEach((img) => payload.append("photos", img, img.name));
+      payload.append("taglist", JSON.stringify(prompt ? [prompt.tag] : []));
+      if (pollOn) {
+        payload.append("poll", JSON.stringify({ options: filledOptions, hours: pollHours }));
+      }
 
       const response = await createPost(payload).unwrap();
       toast("Post created successfully!");

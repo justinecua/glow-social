@@ -4,8 +4,10 @@ import { API_HOST } from "../../../utils/constants";
 const baseQuery = fetchBaseQuery({
   baseUrl: `${API_HOST}/api/`,
   credentials: "include",
-  prepareHeaders: (headers) => {
-    headers.set("Content-Type", "application/json");
+  prepareHeaders: (headers, { arg }) => {
+    // Uploads send FormData: the browser must set the multipart boundary
+    // itself, so don't force JSON for those.
+    if (!(arg?.body instanceof FormData)) headers.set("Content-Type", "application/json");
     return headers;
   },
 });
