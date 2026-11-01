@@ -1,4 +1,4 @@
-from accounts.auth_utils import require_self
+from accounts.auth_utils import require_self, current_account_id
 from django.shortcuts import render
 
 # Create your views here.
@@ -13,6 +13,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .queries import (
     countNotifications,
     showNotificationsByUser,
+    markAllRead,
 )
 
 class CountNotifications(APIView):
@@ -30,3 +31,11 @@ class ShowNotificationsByUser(APIView):
         require_self(request, account_id)
         data = showNotificationsByUser(account_id) 
         return Response(data)
+
+
+class MarkAllRead(APIView):
+    """Mark the signed-in user's notifications as read (clears the badge)."""
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request):
+        return Response(markAllRead(current_account_id(request)))

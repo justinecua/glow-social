@@ -49,6 +49,24 @@ def getFriendList(account_id):
         if connection:
             connection.close()
 
+def _display_name(cursor, account_id):
+    """First + last name, else the username: never just "Someone"."""
+    cursor.execute(
+        """
+        SELECT a.firstname, a.lastname, u.username
+        FROM glow.glow.accounts_account a
+        JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
+        WHERE a.id = %s
+        """,
+        (account_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return "Someone"
+    first, last, username = row
+    return " ".join(filter(None, [first, last])) or username or "Someone"
+
+
 def addFriend(friend_id, user_id):
     try:
         now = datetime.now(pytz.utc)
@@ -86,11 +104,18 @@ def addFriend(friend_id, user_id):
             raise Exception("Notification type 'friend_request' not found.")
         notif_type_id = notif_type_id[0]
 
-        user_name_query = "SELECT firstname FROM glow.glow.accounts_account WHERE id = %s"
-        cursor.execute(user_name_query, (user_id,))
-        user_name = cursor.fetchone()[0] or "Someone"
+        user_name = _display_name(cursor, user_id)
 
         notif_content = f"{user_name} sent you a friend request"
+
+        # One request notification per person: drop any older one first.
+        cursor.execute(
+            """
+            DELETE FROM glow.glow.notifications_notification
+            WHERE notif_to_id = %s AND notif_from_id = %s AND notif_type_id = %s
+            """,
+            (friend_id, user_id, notif_type_id),
+        )
 
         notif_query = """
             INSERT INTO glow.glow.notifications_notification (status, notif_type_id, notif_to_id, notif_from_id, content, created_at)
@@ -123,10 +148,12 @@ def cancelFriendRequest(friend_id, user_id):
         """
         cursor.execute(delete_query, (friend_id, user_id, user_id, friend_id))
 
-        delete_notif_query = """
+        # The request is gone, so its notification goes too (read or not).
+        # Only friend-request notifications: an unread glow from them stays.
+        delete_notif_query = f"""
             DELETE FROM glow.glow.notifications_notification
             WHERE ((notif_to_id = %s AND notif_from_id = %s) OR (notif_to_id = %s AND notif_from_id = %s))
-              AND status = 'Unread'
+              AND notif_type_id = (SELECT id FROM glow.glow.notifications_notificationtype WHERE type = 'friend_request' LIMIT 1)
         """
         cursor.execute(delete_notif_query, (friend_id, user_id, user_id, friend_id))
 
@@ -158,12 +185,47 @@ def acceptFriend(friend_id, user_id):
             SET status = 'Friends'
             WHERE friend_id = %s AND user_id = %s AND status = 'Pending'
         """
-        cursor.execute(update_query, (user_id, friend_id)) 
+        cursor.execute(update_query, (user_id, friend_id))
+        accepted = cursor.rowcount > 0
+
+        if accepted:
+            now = datetime.now(pytz.utc)
+            cursor.execute(
+                "UPDATE glow.glow.friends_friend SET date_became_friends = %s "
+                "WHERE friend_id = %s AND user_id = %s",
+                (now, user_id, friend_id),
+            )
+            # The request is answered: it no longer needs attention.
+            cursor.execute(
+                """
+                UPDATE glow.glow.notifications_notification SET status = 'Read'
+                WHERE notif_to_id = %s AND notif_from_id = %s AND status = 'Unread'
+                  AND notif_type_id = (SELECT id FROM glow.glow.notifications_notificationtype
+                                       WHERE type = 'friend_request' LIMIT 1)
+                """,
+                (user_id, friend_id),
+            )
+            # Tell the person who sent the request.
+            cursor.execute(
+                "INSERT INTO glow.glow.notifications_notificationtype (type) "
+                "SELECT 'friend_accepted' WHERE NOT EXISTS (SELECT 1 FROM "
+                "glow.glow.notifications_notificationtype WHERE type = 'friend_accepted')"
+            )
+            cursor.execute(
+                """
+                INSERT INTO glow.glow.notifications_notification
+                    (status, notif_type_id, notif_to_id, notif_from_id, content, created_at)
+                SELECT 'Unread', id, %s, %s, %s, %s
+                FROM glow.glow.notifications_notificationtype WHERE type = 'friend_accepted'
+                """,
+                (friend_id, user_id,
+                 f"{_display_name(cursor, user_id)} accepted your friend request", now),
+            )
 
         connection.commit()
         return {
-            "status": "success",
-            "message": "Friend request accepted.",
+            "status": "success" if accepted else "error",
+            "message": "Friend request accepted." if accepted else "No pending request.",
         }
 
     except Exception as error:
@@ -191,6 +253,14 @@ def unfriend(friend_id, user_id):
             """
             DELETE FROM glow.glow.friends_closefriend
             WHERE (owner_id = %s AND friend_id = %s) OR (owner_id = %s AND friend_id = %s)
+            """,
+            (friend_id, user_id, user_id, friend_id),
+        )
+        cursor.execute(
+            """
+            DELETE FROM glow.glow.notifications_notification
+            WHERE ((notif_to_id = %s AND notif_from_id = %s) OR (notif_to_id = %s AND notif_from_id = %s))
+              AND notif_type_id = (SELECT id FROM glow.glow.notifications_notificationtype WHERE type = 'friend_request' LIMIT 1)
             """,
             (friend_id, user_id, user_id, friend_id),
         )

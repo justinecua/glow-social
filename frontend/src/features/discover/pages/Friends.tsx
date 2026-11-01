@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { Gift, Loader2, Star, UserPlus, UsersRound } from "lucide-react";
-import InviteDialog from "@/features/growth/InviteDialog";
+import { Loader2, Star, UserPlus, UsersRound } from "lucide-react";
 import { toast } from "sonner";
 import AppShell from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
@@ -28,7 +27,6 @@ const FriendsPage = () => {
   const socketRef = useWebSocket();
   const [tab, setTab] = useState<Tab>("friends");
   const [busy, setBusy] = useState<Record<number, boolean>>({});
-  const [inviteOpen, setInviteOpen] = useState(false);
   const [setCloseFriend] = useSetCloseFriendMutation();
 
   const { data, isLoading, refetch } = useGetMyFriendsQuery(undefined, {
@@ -157,21 +155,7 @@ const FriendsPage = () => {
   return (
     <AppShell>
       <div className="w-full max-w-xl">
-        <PageHeader title="Friends">
-          <Button
-            onClick={() => setInviteOpen(true)}
-            className="mt-4 cursor-pointer bg-[var(--button-color-bg)] text-white hover:opacity-90"
-          >
-            <Gift /> Invite friends to Glow
-          </Button>
-        </PageHeader>
-        {storedUser?.user?.username && (
-          <InviteDialog
-            open={inviteOpen}
-            onOpenChange={setInviteOpen}
-            username={storedUser.user.username}
-          />
-        )}
+        <PageHeader title="Friends" />
 
         <div className="flex gap-6 border-b">
           {tabBtn("friends", "Friends", friends.length)}

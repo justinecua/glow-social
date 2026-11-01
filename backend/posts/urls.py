@@ -16,7 +16,7 @@ from .views import (
     Explore,
     Search,
     GetPost,
-    TodayPrompt,
+    PostDetail,
 )
 
 
@@ -25,7 +25,7 @@ urlpatterns = [
     path("explore/", Explore.as_view(), name="explore"),
     path("search/", Search.as_view(), name="search"),
     path("post/<int:post_id>/", GetPost.as_view(), name="getPost"),
-    path("prompt/today/", TodayPrompt.as_view(), name="todayPrompt"),
+    path("post/<int:post_id>/manage/", PostDetail.as_view(), name="managePost"),
     path("createPost/", CreatePost.as_view(), name="createPost"),
     path("sendGlow/", SendGlow.as_view(), name="sendGlow"),
     path("sendUnglow/", SendUnglow.as_view(), name="sendUnglow"),

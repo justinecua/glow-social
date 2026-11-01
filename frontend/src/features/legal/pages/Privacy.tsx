@@ -27,7 +27,8 @@ const Privacy = () => (
         </li>
         <li>
           <strong>Content:</strong> posts, photos, comments, replies, glows
-          (likes) and friend connections.
+          (likes), friend connections, and the messages you send in chats.
+          Messages are visible only to the people in that chat.
         </li>
         <li>
           <strong>Consent records:</strong> which version of our Terms and

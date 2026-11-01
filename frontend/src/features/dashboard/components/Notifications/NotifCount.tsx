@@ -1,52 +1,24 @@
-import { useEffect, useState } from "react";
-import { Badge } from "@/components/ui/badge";
-import { useWebSocket } from "@/utils/WebSocketContext";
 import { useStoredUser } from "@/utils/auth";
 import { useGetCountNotificationsByUserQuery } from "@/redux/services/notifications/notifications";
+import { formatCount } from "@/lib/formatCount";
 
+/** Red badge with the number of unread notifications (live, see NotificationsRealtime). */
 const NotificationsCount = () => {
   const user = useStoredUser();
-  const socketRef = useWebSocket();
-
-  const { data: initialCount } = useGetCountNotificationsByUserQuery({
-    account_id: user?.user?.account_id,
-  });
-
-  const [notifCount, setNotifCount] = useState(0);
-  const [notifList, setNotifList] = useState([]);
-
-  useEffect(() => {
-    if (initialCount !== undefined && notifCount === 0) {
-      setNotifCount(initialCount);
-    }
-  }, [initialCount]);
-
-  useEffect(() => {
-    const socket = socketRef.current;
-    if (!socket) return;
-
-    const handleMessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === "notification") {
-          setNotifCount(data.count);
-          setNotifList(data.notifications);
-        }
-      } catch (err) {
-        console.error("WebSocket error in NotificationsCount:", err);
-      }
-    };
-
-    socket.addEventListener("message", handleMessage);
-    return () => socket.removeEventListener("message", handleMessage);
-  }, [socketRef]);
-
-  if (!notifCount || notifCount === 0) return null;
-
+  const accountId = user?.user?.account_id;
+  const { data } = useGetCountNotificationsByUserQuery(
+    { account_id: accountId },
+    { skip: !accountId }
+  );
+  const n = Number(data) || 0;
+  if (!n) return null;
   return (
-    <Badge className="h-5 min-w-5 rounded-full px-1 bg-red-500 text-white">
-      {notifCount}
-    </Badge>
+    <span
+      className="flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white"
+      aria-label={`${n} unread notification${n === 1 ? "" : "s"}`}
+    >
+      {formatCount(n)}
+    </span>
   );
 };
 

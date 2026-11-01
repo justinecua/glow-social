@@ -32,3 +32,6 @@ Thumbs.db
 
 # Local Claude Code settings
 .claude/settings.local.json
+
+# Local test credentials (contains passwords)
+test_accounts.txt

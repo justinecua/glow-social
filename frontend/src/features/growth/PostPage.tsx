@@ -7,6 +7,7 @@ import PhotoDialog from "@/features/dashboard/components/modal/PhotoDialog";
 import SkeletonPost from "@/features/dashboard/components/Skeleton/skeletonPosts";
 import PostComments from "@/features/dashboard/components/Feed/PostComments";
 import PostCard from "@/features/discover/components/PostCard";
+import { useLivePost } from "@/features/posts/livePosts";
 import { EmptyState } from "@/features/discover/components/PageHeader";
 import { useGetPostQuery } from "@/redux/services/growth";
 import { useStoredUser } from "@/utils/auth";
@@ -16,7 +17,9 @@ import { formatCount } from "@/lib/formatCount";
 const PostPage = () => {
   const { id = "" } = useParams();
   const user = useStoredUser();
-  const { data: post, isLoading, isError } = useGetPostQuery({ post_id: id });
+  const { data, isLoading, isError } = useGetPostQuery({ post_id: id });
+  // Reflects edits from the ⋯ menu; becomes null once deleted here.
+  const post = useLivePost(data);
   const [viewer, setViewer] = useState<number | null>(null);
 
   return (
