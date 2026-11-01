@@ -1,0 +1,37 @@
+services:
+  glow:
+    build: .
+    container_name: glow
+    command: python3 manage.py runserver 0.0.0.0:${CONTAINER_PORT}
+    volumes:
+      - .:/glow
+      - ./staticfiles:/home/justine/glow/staticfiles
+    ports:
+      - "${HOST_PORT}:${CONTAINER_PORT}"
+    networks:
+      - mynetwork
+    restart: always
+    environment:
+      - TZ=Asia/Manila
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - mynetwork
+    restart: always
+    environment:
+      - TZ=Asia/Manila
+
+networks:
+  mynetwork:
+    driver: bridge
+
+volumes:
+  redis_data:
