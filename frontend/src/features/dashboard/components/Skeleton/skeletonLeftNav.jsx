@@ -1,0 +1,35 @@
+import { Skeleton } from "@/components/ui/skeleton";
+import { useSidebars } from "@/components/layout/useSidebars";
+
+/** Same shell as LeftNav (brand, nav rows, theme toggle), shown while we
+ *  check whether the visitor is signed in. */
+const SkeletonLeftNav = () => {
+  const { leftCollapsed: collapsed } = useSidebars();
+  return (
+    <nav
+      aria-hidden
+      className={`Left fixed flex h-full flex-col justify-between bg-[var(--home-card)] ${
+        collapsed ? "w-20 items-center px-3 py-7" : "w-xs p-7"
+      }`}
+    >
+      <div>
+        <div className="mb-6 flex h-[50px] items-center px-2">
+          <Skeleton className={collapsed ? "h-7 w-7" : "h-7 w-20"} />
+        </div>
+        <div className="flex flex-col gap-1">
+          {[24, 20, 18, 26, 18].map((w, i) => (
+            <div key={i} className="flex items-center gap-3 px-2 py-2">
+              <Skeleton className="h-9 w-9 rounded-md" />
+              {!collapsed && <Skeleton className="h-3.5" style={{ width: `${w * 4}px` }} />}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="px-2">
+        <Skeleton className="h-9 w-9 rounded-md" />
+      </div>
+    </nav>
+  );
+};
+
+export default SkeletonLeftNav;

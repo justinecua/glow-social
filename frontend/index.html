@@ -19,7 +19,7 @@
     <title>Glow</title>
     <script>
       // Apply the theme before first paint to avoid a light flash on reload.
-      // Must match storageKey/defaultTheme in theme-provider.tsx.
+      // Must match storageKey/defaultTheme in theme-provider.jsx.
       (function () {
         try {
           var t = localStorage.getItem("vite-ui-theme") || "system";
@@ -36,6 +36,6 @@
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
