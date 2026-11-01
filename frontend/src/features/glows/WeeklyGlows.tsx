@@ -28,7 +28,7 @@ const WeeklyGlows = () => {
           <Sun className="h-4 w-4" />
         </span>
         <div>
-          <h2 className="text-base font-semibold leading-tight">Glows this week</h2>
+          <h2 className="text-base font-semibold leading-tight">Kudos this week</h2>
           <p className="text-xs text-[var(--color-subtitle)]">Who's spreading the most appreciation</p>
         </div>
       </div>
@@ -41,7 +41,7 @@ const WeeklyGlows = () => {
             </div>
             <p className="mt-2 flex items-baseline gap-1.5">
               <span className="text-3xl font-bold text-[var(--button-color-bg)]">{chain.length}</span>
-              <span className="text-sm text-[var(--color-subtitle)]">glows passed on</span>
+              <span className="text-sm text-[var(--color-subtitle)]">kudos passed on</span>
             </p>
             <div className="mt-3">
               <ChainPeople people={chain.people} />
@@ -71,7 +71,7 @@ const WeeklyGlows = () => {
                     <Avatar src={p.profile_photo} alt={p.username} className="h-9 w-9" />
                     <span className="min-w-0 flex-1 truncate text-sm font-semibold">@{p.username}</span>
                     <span className="shrink-0 rounded-full bg-[color-mix(in_srgb,var(--button-color-bg)_12%,transparent)] px-2.5 py-0.5 text-xs font-medium text-[var(--button-color-bg)]">
-                      {formatCount(p.glows)} {p.glows === 1 ? "glow" : "glows"}
+                      {formatCount(p.glows)} kudos
                     </span>
                     <ChevronRight className="h-4 w-4 shrink-0 text-[var(--color-subtitle)] opacity-0 transition-opacity group-hover:opacity-100" />
                   </Link>

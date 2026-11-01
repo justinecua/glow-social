@@ -1,3 +1,4 @@
+import SparksHost from "@/features/sparks/SparksHost";
 import { useEffect } from "react";
 import { useDispatch } from "react-redux";
 import { setUser } from "@/redux/slices/authSlice";
@@ -65,6 +66,7 @@ function App() {
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/guidelines" element={<Guidelines />} />
           </Routes>
+          <SparksHost />
 
           <ChatRealtime />
           <NotificationsRealtime />

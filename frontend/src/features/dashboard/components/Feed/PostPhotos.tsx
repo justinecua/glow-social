@@ -1,3 +1,5 @@
+import PostImage from "@/features/posts/PostImage";
+import { parseTrend } from "@/features/posts/TrendCard";
 import { useEffect, useState } from "react";
 import {
   Carousel,
@@ -43,7 +45,7 @@ const PostPhotos = ({
     if (photos.length === 1) {
       return (
         <div className={wrapperClasses} onClick={() => onPhotoClick?.(0)}>
-          <img
+          <PostImage
             src={photos[0]}
             alt="Post"
             loading={isModal ? "eager" : "lazy"}
@@ -75,7 +77,7 @@ const PostPhotos = ({
                   onClick={() => onPhotoClick?.(index)}
                   className="cursor-pointer w-full h-full"
                 >
-                  <img
+                  <PostImage
                     src={photo}
                     alt={`Photo ${index + 1}`}
                     loading={isModal && index === 0 ? "eager" : "lazy"}
@@ -98,6 +100,9 @@ const PostPhotos = ({
       </div>
     );
   };
+
+  // Trend posts show their thumbnail inside the trend card instead.
+  if (post?.is_bot && parseTrend(post?.caption)) return null;
 
   return (
     <div

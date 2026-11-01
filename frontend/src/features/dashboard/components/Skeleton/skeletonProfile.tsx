@@ -52,7 +52,7 @@ const SkeletonProfile = ({ showActions = false }: { showActions?: boolean }) => 
         <div className="mt-8">
           <Tabs defaultValue="posts">
             <TabsList className="w-full bg-transparent">
-              {["Posts", "Photos", "Thoughts", "Glows", "About"].map((label, index) => (
+              {["Posts", "Photos", "Thoughts", "Kudos", "About"].map((label, index) => (
                 <TabsTrigger
                   key={index}
                   value={label.toLowerCase()}

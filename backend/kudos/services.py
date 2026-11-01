@@ -113,22 +113,22 @@ def _notify(recipient, sender, note):
         notif_type=ntype,
         notif_to=recipient,
         notif_from=sender,
-        content=f"{_display_name(sender)} sent you a glow “{note.message}”",
+        content=f"{_display_name(sender)} sent you kudos “{note.message}”",
     )
 
 
 def send_glow(sender_id, recipient_id, message):
     message = (message or "").strip()
     if not message:
-        raise GlowError("Write a short note to go with your glow.")
+        raise GlowError("Write a short note to go with your kudos.")
     if len(message) > GlowNote.MAX_LENGTH:
         raise GlowError(f"Keep it under {GlowNote.MAX_LENGTH} characters.")
     try:
         recipient_id = int(recipient_id)
     except (TypeError, ValueError):
-        raise GlowError("Choose who to send your glow to.")
+        raise GlowError("Choose who to send your kudos to.")
     if recipient_id == sender_id:
-        raise GlowError("You can't send a glow to yourself.")
+        raise GlowError("You can't send kudos to yourself.")
 
     recipient = Account.objects.select_related("auth_user").filter(
         id=recipient_id, auth_user__is_active=True
@@ -140,9 +140,9 @@ def send_glow(sender_id, recipient_id, message):
     since = timezone.now() - timedelta(hours=24)
     sent = GlowNote.objects.filter(sender_id=sender_id, created_at__gte=since)
     if sent.count() >= DAILY_LIMIT:
-        raise GlowError(f"You've sent {DAILY_LIMIT} glows today. Come back tomorrow")
+        raise GlowError(f"You've sent kudos {DAILY_LIMIT} times today. Come back tomorrow")
     if sent.filter(recipient_id=recipient_id).exists():
-        raise GlowError("You already glowed this person today.")
+        raise GlowError("You already sent this person kudos today.")
 
     with transaction.atomic():
         # Pay it forward: use the oldest glow you received but haven't passed on.

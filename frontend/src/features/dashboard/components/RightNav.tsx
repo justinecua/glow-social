@@ -1,3 +1,4 @@
+import SparkRing from "@/features/sparks/SparkRing";
 import { Button } from "@/components/ui/button";
 import { useGetNewUsersQuery } from "@/redux/services/accounts/accounts";
 import NoProfile from "../../../assets/images/No-Profile.jpg";
@@ -11,7 +12,7 @@ import { useSidebars } from "@/components/layout/useSidebars";
 import LogoutConfirmDialog from "@/components/layout/LogoutConfirmDialog";
 import InviteDialog from "@/features/growth/InviteDialog";
 import { useGetMyInvitesQuery } from "@/redux/services/growth";
-import { useGetExploreQuery } from "@/redux/services/discover";
+import { useGetPeopleYouMayKnowQuery } from "@/redux/services/discover";
 import { Avatar } from "@/features/discover/components/PersonRow";
 import { useAuthChecking, useStoredUser } from "@/utils/auth";
 import LegalLinks from "@/features/legal/components/LegalLinks";
@@ -33,9 +34,9 @@ const RightToggle = ({ collapsed, onClick }: { collapsed: boolean; onClick: () =
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md border text-[var(--color-subtitle)] transition-colors hover:bg-[var(--button-hover-bg-color)] hover:text-[var(--title-color)]"
+      className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-[var(--color-subtitle)] transition-colors hover:bg-[var(--button-hover-bg-color)] hover:text-[var(--title-color)]"
     >
-      <Icon className="h-[1.1rem] w-[1.1rem]" />
+      <Icon className="h-4 w-4" />
     </button>
   );
 };
@@ -98,10 +99,10 @@ const MemberPanel = ({ user, onCollapse }: { user: any; onCollapse: () => void }
   const [inviteOpen, setInviteOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const { data: invites } = useGetMyInvitesQuery(undefined);
-  const { data: explore, isLoading: exploreLoading } = useGetExploreQuery(undefined);
-  const suggested = (explore?.people ?? [])
-    .filter((p: any) => String(p.id) !== String(me.account_id))
-    .slice(0, 5);
+  const { data: people, isLoading: exploreLoading } = useGetPeopleYouMayKnowQuery(undefined);
+  const suggested = (people ?? []).slice(0, 5);
+  const mutualLabel = (n: number) =>
+    n > 0 ? `${formatCount(n)} mutual ${n === 1 ? "friend" : "friends"}` : "New to you";
 
   const iconBtn =
     "flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-[var(--color-subtitle)] transition-colors hover:bg-[var(--button-hover-bg-color)] hover:text-[var(--title-color)]";
@@ -112,7 +113,9 @@ const MemberPanel = ({ user, onCollapse }: { user: any; onCollapse: () => void }
         {/* You */}
         <section className="flex items-center gap-3 rounded-xl border p-3">
           <Link to={`/profile/${me.account_id}`} className="flex min-w-0 flex-1 items-center gap-3">
-            <Avatar src={me.profile_photo} alt={me.username} className="h-11 w-11" />
+            <SparkRing accountId={me.account_id}>
+              <Avatar src={me.profile_photo} alt={me.username} className="h-11 w-11" />
+            </SparkRing>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">{displayName(me)}</p>
               <p className="truncate text-xs text-[var(--color-subtitle)]">@{me.username}</p>
@@ -156,8 +159,8 @@ const MemberPanel = ({ user, onCollapse }: { user: any; onCollapse: () => void }
         {(exploreLoading || suggested.length > 0) && (
           <section>
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-semibold">Suggested for you</p>
-              <Link to="/explore" className="text-xs text-[var(--color-subtitle)] hover:underline">
+              <p className="text-sm font-semibold">People you may know</p>
+              <Link to="/friends" className="text-xs text-[var(--color-subtitle)] hover:underline">
                 See all
               </Link>
             </div>
@@ -181,7 +184,9 @@ const MemberPanel = ({ user, onCollapse }: { user: any; onCollapse: () => void }
                       <Avatar src={p.profile_photo} alt={p.username} className="h-9 w-9" />
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{displayName(p)}</p>
-                        <p className="truncate text-xs text-[var(--color-subtitle)]">@{p.username}</p>
+                        <p className="truncate text-xs text-[var(--color-subtitle)]">
+                          {mutualLabel(Number(p.mutual_count) || 0)}
+                        </p>
                       </div>
                     </Link>
                   ))}
@@ -189,11 +194,9 @@ const MemberPanel = ({ user, onCollapse }: { user: any; onCollapse: () => void }
           </section>
         )}
 
-        <div className="mt-auto">
-          <div className="mb-3 flex justify-end">
-            <RightToggle collapsed={false} onClick={onCollapse} />
-          </div>
+        <div className="mt-auto flex items-center justify-between gap-2">
           <LegalLinks variant="footer" />
+          <RightToggle collapsed={false} onClick={onCollapse} />
         </div>
       </CardContent>
 
@@ -301,11 +304,9 @@ const RightNav = () => {
               )}
             </div>
           </div>
-          <div className="mt-auto">
-            <div className="mb-3 flex justify-end">
-              <RightToggle collapsed={false} onClick={toggleRight} />
-            </div>
+          <div className="mt-auto flex items-center justify-between gap-2">
             <LegalLinks variant="footer" />
+            <RightToggle collapsed={false} onClick={toggleRight} />
           </div>
         </CardContent>
       </Card>

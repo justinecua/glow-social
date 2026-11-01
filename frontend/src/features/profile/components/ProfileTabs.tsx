@@ -113,7 +113,7 @@ const ProfileTabs = ({ item, posts, allPhotos }) => {
                 data-[state=active]:border-[var(--accent-color)]
               "
           >
-            Glows
+            Kudos
           </TabsTrigger>
 
           <TabsTrigger

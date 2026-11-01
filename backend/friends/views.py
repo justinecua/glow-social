@@ -7,8 +7,17 @@ from rest_framework import status, permissions
 from .queries import (
     myFriends,
     getTotalFriends,
-    checkUserFriendRequest
+    checkUserFriendRequest,
+    peopleYouMayKnow,
 )
+
+
+class PeopleYouMayKnow(APIView):
+    """Friend suggestions for the signed-in user, by mutual friends."""
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request):
+        return Response(peopleYouMayKnow(current_account_id(request)))
 
 class GetTotalFriends(APIView):
     permission_classes = (permissions.AllowAny,)

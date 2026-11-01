@@ -1,3 +1,6 @@
+import { useSelector } from "react-redux";
+import type { RootState } from "@/redux/store/store";
+import { useLivePosts } from "@/features/posts/livePosts";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Flame, X } from "lucide-react";
@@ -29,6 +32,8 @@ const SectionTitle = ({
 const scrollRow =
   "flex overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(to_right,black_85%,transparent)]";
 
+const EMPTY: any[] = [];
+
 const Explore = () => {
   const [params, setParams] = useSearchParams();
   const tag = params.get("tag") || "";
@@ -42,14 +47,20 @@ const Explore = () => {
     null
   );
 
-  const trending = data?.trending ?? [];
-  const photos: { url: string; post_id: number }[] = data?.photos ?? [];
+  // Hide posts you deleted (or edited) this session right away; the server
+  // cache catches up on the next load.
+  const deleted = useSelector((st: RootState) => st.postEdits.deleted);
+  const trending = useLivePosts<any>(data?.trending ?? EMPTY);
+  const photos: { url: string; post_id: number }[] = (data?.photos ?? EMPTY).filter(
+    (p: any) => !deleted[p.post_id]
+  );
   const tags: { tag: string; posts: number }[] = data?.tags ?? [];
   const people = data?.people ?? [];
 
   const setTag = (t: string) => setParams(t ? { tag: t } : {});
 
-  const postsToShow = tag ? tagData?.results ?? [] : trending;
+  const tagPosts = useLivePosts<any>(tagData?.results ?? EMPTY);
+  const postsToShow = tag ? tagPosts : trending;
 
   return (
     <AppShell>
