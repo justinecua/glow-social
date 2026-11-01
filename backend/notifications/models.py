@@ -22,5 +22,13 @@ class Notification(models.Model):
     content = models.CharField(max_length=1000)  
     created_at = models.DateTimeField(auto_now_add=True, null=True)
 
+    class Meta:
+        indexes = [
+            # Unread badge count.
+            models.Index(fields=["notif_to", "status"], name="notif_to_status_idx"),
+            # The list: newest first per person.
+            models.Index(fields=["notif_to", "-created_at"], name="notif_to_created_idx"),
+        ]
+
     def __str__(self):
         return self.content

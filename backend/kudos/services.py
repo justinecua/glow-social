@@ -92,7 +92,11 @@ def chain_for(note_id):
 
 def status_for(account_id):
     since = timezone.now() - timedelta(hours=24)
-    sent_today = GlowNote.objects.filter(sender_id=account_id, created_at__gte=since).count()
+    recent = GlowNote.objects.filter(sender_id=account_id, created_at__gte=since)
+    sent_today = recent.count()
+    # One kudos per person per 24h (see send_glow), so the app can
+    # disable "Send kudos" for people you've already sent one to.
+    sent_to = sorted(set(recent.values_list("recipient_id", flat=True)))
     passes = (
         GlowNote.objects.filter(recipient_id=account_id, is_hidden=False)
         .filter(passed_on__isnull=True)
@@ -103,6 +107,7 @@ def status_for(account_id):
         "sent_today": sent_today,
         "remaining_today": max(0, DAILY_LIMIT - sent_today),
         "passes_available": passes,
+        "sent_to_today": sent_to,
     }
 
 

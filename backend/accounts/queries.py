@@ -45,8 +45,6 @@ def getAllAccounts():
     finally:        
         if cursor:
             cursor.close()
-        if connection:
-            connection.close()
 
 def login(username, password):
     try:
@@ -98,8 +96,6 @@ def login(username, password):
     finally:
         if cursor:
             cursor.close()
-        if connection:
-            connection.close()
 
 
 
@@ -263,8 +259,6 @@ def forgot_password(email):
     finally:
         if cursor:
             cursor.close()
-        if connection:
-            connection.close()
 
 def reset_password(token, new_password):
     connection = connections['default']
@@ -326,8 +320,6 @@ def reset_password(token, new_password):
     finally:
         if cursor:
             cursor.close()
-        if connection:
-            connection.close()
 
 
 def getNewUsers():
@@ -357,8 +349,6 @@ def getNewUsers():
     finally:        
         if cursor:
             cursor.close()
-        if connection:
-            connection.close()
 
 def getProfile(profile_id, viewer_user_id=None):
     """Public profile. Never SELECT * here: auth_user holds the password hash
@@ -417,5 +407,3 @@ def getTotalGlowsPostByUser(account_id):
     finally:        
         if cursor:
             cursor.close()
-        if connection:
-            connection.close()

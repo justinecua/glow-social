@@ -33,8 +33,6 @@ def countGlows(post_id):
     finally:        
         if cursor:
             cursor.close()
-        if connection:
-            connection.close()
 
 def getProfileGlows(post_id):
     try:
@@ -63,8 +61,6 @@ def getProfileGlows(post_id):
     finally:        
         if cursor:
             cursor.close()
-        if connection:
-            connection.close()
 
 def countComments(post_id):
     try:
@@ -92,8 +88,6 @@ def countComments(post_id):
     finally:        
         if cursor:
             cursor.close()
-        if connection:
-            connection.close()
 
 COMMENT_SELECT = """
     SELECT
