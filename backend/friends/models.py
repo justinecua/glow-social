@@ -23,3 +23,18 @@ class Friend(models.Model):
     def __str__(self):
         return f"{self.user.firstname} sent a friend request to {self.friend.firstname}"
 
+
+
+class CloseFriend(models.Model):
+    """`owner` put `friend` on their Close Friends list. Posts shared with
+    "Close friends" are visible only to people on the author's list."""
+
+    owner = models.ForeignKey(Account, related_name="close_friends", on_delete=models.CASCADE)
+    friend = models.ForeignKey(Account, related_name="close_friend_of", on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("owner", "friend")
+
+    def __str__(self):
+        return f"{self.owner_id} -> {self.friend_id} (close friend)"

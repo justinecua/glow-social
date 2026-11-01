@@ -5,7 +5,9 @@ import { lazy, Suspense } from "react";
 
 // Loaded on demand; emoji-picker-react is a large dependency.
 const EmojiPicker = lazy(() => import("emoji-picker-react"));
-import { SmilePlus, Image } from "lucide-react";
+import { SmilePlus, Image, Check, ChevronDown } from "lucide-react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { AUDIENCES, audienceInfo, type AudienceKey } from "@/features/growth/audience";
 import {
   useRef,
   useState,
@@ -26,6 +28,24 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
   const [images, setImages] = useState([]);
   // Set when opened from a daily prompt: shown above the box, tag added to the post
   const [prompt, setPrompt] = useState<{ text: string; tag: string } | null>(null);
+  // Who can see the post; remembers your last choice on this device.
+  const [audience, setAudience] = useState<AudienceKey>(() => {
+    try {
+      const saved = localStorage.getItem("glow_last_audience") as AudienceKey | null;
+      return AUDIENCES.some((a) => a.key === saved) ? (saved as AudienceKey) : "public";
+    } catch {
+      return "public";
+    }
+  });
+  const chooseAudience = (key: AudienceKey) => {
+    setAudience(key);
+    try {
+      localStorage.setItem("glow_last_audience", key);
+    } catch {
+      /* ignore */
+    }
+  };
+  const current = audienceInfo(audience);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const textareaRef = useRef(null);
   const emojiPickerRef = useRef(null);
@@ -54,7 +74,7 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
 
       const payload = {
         accID: user?.user?.account_id,
-        audience: 1,
+        audience,
         caption: text,
         photos: base64Images,
         taglist: prompt?.tag ? [prompt.tag] : [],
@@ -68,6 +88,8 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
       setPrompt(null);
       setOpen(false);
       onPostCreated?.(response);
+      // Let the feed know, whichever Create button was used.
+      window.dispatchEvent(new CustomEvent("glow:post-created", { detail: response }));
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       console.error("Failed to create post:", err);
@@ -148,7 +170,49 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
             alt={user?.user?.username ?? ""}
             className="mr-2 h-10 w-10"
           />
-          <p className="text-sm">{user?.user?.username}</p>
+          <div className="flex flex-col items-start gap-1">
+            <p className="text-sm font-medium">{user?.user?.username}</p>
+            <DropdownMenu.Root modal={false}>
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  className="flex cursor-pointer items-center gap-1.5 rounded-md bg-[var(--photo-bg)] px-2 py-1 text-xs font-medium hover:bg-[var(--button-hover-bg-color)]"
+                  aria-label={`Audience: ${current.label}`}
+                >
+                  <current.icon className="h-3.5 w-3.5" />
+                  {current.label}
+                  <ChevronDown className="h-3 w-3 opacity-60" />
+                </button>
+              </DropdownMenu.Trigger>
+              {/* Inline (no Portal): it lives inside this dialog */}
+              <DropdownMenu.Content
+                align="start"
+                sideOffset={4}
+                collisionPadding={8}
+                className="z-[300] min-w-[220px] rounded-lg border bg-[var(--home-card)] p-1 shadow-lg"
+              >
+                <DropdownMenu.Label className="px-2.5 py-1.5 text-xs font-semibold text-[var(--color-subtitle)]">
+                  Who can see this?
+                </DropdownMenu.Label>
+                {AUDIENCES.map((a) => (
+                  <DropdownMenu.Item
+                    key={a.key}
+                    onSelect={() => chooseAudience(a.key)}
+                    className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 outline-none data-[highlighted]:bg-[var(--button-hover-bg-color)]"
+                  >
+                    <a.icon className="h-4 w-4 shrink-0" />
+                    <span className="flex-1">
+                      <span className="block text-sm">{a.label}</span>
+                      <span className="block text-xs text-[var(--color-subtitle)]">
+                        {a.description}
+                      </span>
+                    </span>
+                    {a.key === audience && <Check className="h-4 w-4 text-[var(--button-color-bg)]" />}
+                  </DropdownMenu.Item>
+                ))}
+              </DropdownMenu.Content>
+            </DropdownMenu.Root>
+          </div>
         </div>
 
         <textarea

@@ -57,13 +57,25 @@ const NewsFeedMiddle = () => {
     }
   }, [data]);
 
+  const addPost = (newPost: any) =>
+    setAllPosts((prev) =>
+      prev.some((p) => p.id === newPost.id) ? prev : [{ ...newPost, is_fresh: true }, ...prev]
+    );
+
   const refetchPosts = (newPost?: any) => {
-    if (newPost) {
-      setAllPosts((prev) => [{ ...newPost, is_fresh: true }, ...prev]);
-    } else {
-      refetch();
-    }
+    if (newPost) addPost(newPost);
+    else refetch();
   };
+
+  // Posts created from any Create button (sidebar, floating menu, prompts)
+  useEffect(() => {
+    const onCreated = (e: Event) => {
+      const post = (e as CustomEvent).detail;
+      if (post?.id) addPost(post);
+    };
+    window.addEventListener("glow:post-created", onCreated);
+    return () => window.removeEventListener("glow:post-created", onCreated);
+  }, []);
 
   const fetchMorePosts = () => {
     if (!isFetching) {

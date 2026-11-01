@@ -1,18 +1,17 @@
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { Gift, Loader2, UserPlus, UsersRound } from "lucide-react";
+import { Gift, Loader2, Star, UserPlus, UsersRound } from "lucide-react";
 import InviteDialog from "@/features/growth/InviteDialog";
 import { toast } from "sonner";
 import AppShell from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
-import { useGetMeQuery } from "@/redux/services/auth/auth";
-import { useGetMyFriendsQuery } from "@/redux/services/discover";
-import { useStoredUser } from "@/utils/auth";
+import { useGetMyFriendsQuery, useSetCloseFriendMutation } from "@/redux/services/discover";
+import { useAuthChecking, useStoredUser } from "@/utils/auth";
 import { useWebSocket } from "@/utils/WebSocketContext";
 import PageHeader, { EmptyState } from "../components/PageHeader";
 import PersonRow from "../components/PersonRow";
 
-type Tab = "friends" | "incoming" | "outgoing";
+type Tab = "friends" | "close" | "incoming" | "outgoing";
 type FriendAction =
   | "accept_friend_result"
   | "cancel_friend_request"
@@ -25,11 +24,12 @@ const since = (iso?: string | null) =>
 
 const FriendsPage = () => {
   const storedUser = useStoredUser() as any;
-  const { isLoading: checkingAuth } = useGetMeQuery(undefined);
+  const checkingAuth = useAuthChecking();
   const socketRef = useWebSocket();
   const [tab, setTab] = useState<Tab>("friends");
   const [busy, setBusy] = useState<Record<number, boolean>>({});
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [setCloseFriend] = useSetCloseFriendMutation();
 
   const { data, isLoading, refetch } = useGetMyFriendsQuery(undefined, {
     skip: !storedUser,
@@ -82,6 +82,7 @@ const FriendsPage = () => {
   };
 
   const friends = data?.friends ?? [];
+  const closeFriends = friends.filter((f: any) => f.is_close);
   const incoming = data?.incoming ?? [];
   const outgoing = data?.outgoing ?? [];
 
@@ -124,7 +125,34 @@ const FriendsPage = () => {
     </Button>
   );
 
-  const list = { friends, incoming, outgoing }[tab];
+  const list = { friends, close: closeFriends, incoming, outgoing }[tab];
+
+  const starBtn = (p: any) => (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        setCloseFriend({ account_id: p.id, close: !p.is_close })
+          .unwrap()
+          .then(() =>
+            toast.success(
+              p.is_close
+                ? `Removed @${p.username} from Close friends`
+                : `Added @${p.username} to Close friends`
+            )
+          )
+          .catch(() => toast.error("Couldn't update Close friends."));
+      }}
+      aria-pressed={!!p.is_close}
+      aria-label={p.is_close ? "Remove from Close friends" : "Add to Close friends"}
+      title={p.is_close ? "Remove from Close friends" : "Add to Close friends"}
+      className={`flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-[var(--button-hover-bg-color)] ${
+        p.is_close ? "text-[var(--button-color-bg)] dark:text-white" : "text-[var(--color-subtitle)]"
+      }`}
+    >
+      <Star className="h-4 w-4" fill={p.is_close ? "currentColor" : "none"} />
+    </button>
+  );
 
   return (
     <AppShell>
@@ -147,6 +175,7 @@ const FriendsPage = () => {
 
         <div className="flex gap-6 border-b">
           {tabBtn("friends", "Friends", friends.length)}
+          {tabBtn("close", "Close friends", closeFriends.length)}
           {tabBtn("incoming", "Requests", incoming.length)}
           {tabBtn("outgoing", "Sent", outgoing.length)}
         </div>
@@ -166,7 +195,9 @@ const FriendsPage = () => {
                 )
               }
               title={
-                tab === "friends"
+                tab === "close"
+                  ? "No close friends yet"
+                  : tab === "friends"
                   ? "No friends yet"
                   : tab === "incoming"
                   ? "No friend requests"
@@ -180,7 +211,7 @@ const FriendsPage = () => {
                   key={p.id}
                   person={p}
                   meta={
-                    tab === "friends"
+                    tab === "friends" || tab === "close"
                       ? `Friends since ${since(p.date_became_friends || p.date_friend_request)}`
                       : `Sent ${since(p.date_friend_request)}`
                   }
@@ -192,15 +223,20 @@ const FriendsPage = () => {
                       </div>
                     ) : tab === "outgoing" ? (
                       actionBtn("Cancel", () => send("cancel_friend_request", p.id), p.id)
+                    ) : tab === "close" ? (
+                      starBtn(p)
                     ) : (
-                      actionBtn(
+                      <div className="flex items-center gap-1">
+                      {starBtn(p)}
+                      {actionBtn(
                         "Unfriend",
                         () => {
                           if (window.confirm(`Remove @${p.username} from your friends?`))
                             send("unfriend", p.id);
                         },
                         p.id
-                      )
+                      )}
+                      </div>
                     )
                   }
                 />

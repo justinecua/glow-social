@@ -41,6 +41,7 @@ def export_user_data(user):
         "shares": [],
         "friends": [],
         "notifications": [],
+        "close_friends": [],
         "glows_sent": [],
         "glows_received": [],
     }
@@ -105,6 +106,12 @@ def export_user_data(user):
         )
 
     from kudos.models import GlowNote
+    from friends.models import CloseFriend
+
+    data["close_friends"] = list(
+        CloseFriend.objects.filter(owner=account)
+        .values_list("friend__auth_user__username", flat=True)
+    )
 
     data["glows_sent"] = [
         {"to": getattr(n.recipient.auth_user, "username", None), "message": n.message,

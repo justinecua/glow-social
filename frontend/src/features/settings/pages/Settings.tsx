@@ -13,10 +13,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useStoredUser } from "@/utils/auth";
+import { useAuthChecking, useStoredUser } from "@/utils/auth";
 import { logout } from "@/redux/slices/authSlice";
 import { api } from "@/redux/services/auth/token";
-import { authApi, useGetMeQuery } from "@/redux/services/auth/auth";
+import { authApi } from "@/redux/services/auth/auth";
 import {
   useDeleteMyAccountMutation,
   useExportMyDataMutation,
@@ -29,8 +29,8 @@ const SettingsPage = () => {
   const storedUser = useStoredUser() as any;
   // The signed-in user arrives via /me after a hard refresh, so wait for it
   // before deciding the visitor is logged out.
-  const { data: me, isLoading: isCheckingAuth } = useGetMeQuery(undefined);
-  const user = storedUser ?? me;
+  const isCheckingAuth = useAuthChecking();
+  const user = storedUser;
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const [exportData, { isLoading: isExporting }] = useExportMyDataMutation();

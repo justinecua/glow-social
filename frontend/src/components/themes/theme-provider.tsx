@@ -44,6 +44,9 @@ export function ThemeProvider({
       root.classList.remove("light", "dark");
       const appliedTheme = newTheme === "system" ? getSystemTheme() : newTheme;
       root.classList.add(appliedTheme);
+      root.style.colorScheme = appliedTheme;
+      // Clear the pre-paint background set in index.html; CSS vars take over.
+      root.style.removeProperty("background-color");
       setResolvedTheme(appliedTheme);
     };
 
