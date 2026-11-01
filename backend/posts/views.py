@@ -15,7 +15,8 @@ from posts.services.external_feeds import (
     getRandomAnimeImage
 )
 
-from .discover import explore, feed, posts_by_tag, search, single_post, today_prompt
+from .discover import explore, feed, posts_by_tag, posts_by_user, search, single_post, today_prompt
+from .visibility import audience_id, can_view_post, viewer_account_id
 from accounts.auth_utils import account_id_for_user
 from .queries import (
     getPosts,
@@ -50,20 +51,28 @@ class GetPostsByUser(APIView):
     permission_classes = (permissions.AllowAny,)
 
     def get(self, request, account_id):
-        data = getPostsByUser(account_id, request=request)
-        return Response(data)
+        # Only the posts this viewer is allowed to see (friends / close
+        # friends / only me are filtered out for everyone else).
+        posts = posts_by_user(account_id, request, viewer_account_id(request))
+        return Response({"results": posts})
 
 class CreatePost(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def post(self, request):
         accID = current_account_id(request)  # ignore client-sent accID
-        audience = request.data.get("audience")
+        # "public" | "friends" | "close_friends" | "only_me" (default public)
+        audience_key = str(request.data.get("audience") or "public")
+        if audience_key not in ("public", "friends", "close_friends", "only_me"):
+            audience_key = "public"
+        audience = audience_id(audience_key)
         caption = request.data.get("caption")
         photos = request.data.get("photos", [])
         taglist = request.data.get("taglist", [])
 
         data = create_post(accID, audience, caption, photos, taglist, request=request)
+        if isinstance(data, dict) and data.get("id"):
+            data["audience"] = audience_key
         return Response(data)
 
 class SendGlow(APIView):
@@ -72,6 +81,8 @@ class SendGlow(APIView):
     def post(self, request):
         accID = current_account_id(request)  # ignore client-sent accID
         postId = request.data.get("postId")
+        if not can_view_post(postId, accID):
+            return Response({"detail": "Post not found."}, status=status.HTTP_404_NOT_FOUND)
 
         data = sendGlow(accID, postId)
         return Response(data)
@@ -167,7 +178,7 @@ class GetPost(APIView):
     permission_classes = (permissions.AllowAny,)
 
     def get(self, request, post_id):
-        post = single_post(post_id, request)
+        post = single_post(post_id, request, viewer_account_id(request))
         if not post:
             return Response({"detail": "Post not found."}, status=status.HTTP_404_NOT_FOUND)
         return Response(post)

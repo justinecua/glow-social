@@ -1,6 +1,7 @@
 import { useState } from "react";
 import NoProfile from "../../../../assets/images/No-Profile.jpg";
 import { Link } from "react-router-dom";
+import { audienceInfo } from "@/features/growth/audience";
 
 const PostTopNav = ({ post }) => {
   const [imgError, setImgError] = useState(false);
@@ -25,6 +26,18 @@ const PostTopNav = ({ post }) => {
         {" "}
         {post?.dateTime}
       </p>
+      {post?.audience && post.audience !== "public" && (() => {
+        const a = audienceInfo(post.audience);
+        return (
+          <span
+            className="ml-1.5 text-[var(--text-color-dateTime)]"
+            title={`Shared with: ${a.label}`}
+            aria-label={`Shared with: ${a.label}`}
+          >
+            <a.icon className="h-3.5 w-3.5" />
+          </span>
+        );
+      })()}
     </div>
   );
 };

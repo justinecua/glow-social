@@ -187,6 +187,13 @@ def unfriend(friend_id, user_id):
             WHERE (friend_id = %s AND user_id = %s) OR (friend_id = %s AND user_id = %s)
         """
         cursor.execute(delete_query, (friend_id, user_id, user_id, friend_id))
+        cursor.execute(
+            """
+            DELETE FROM glow.glow.friends_closefriend
+            WHERE (owner_id = %s AND friend_id = %s) OR (owner_id = %s AND friend_id = %s)
+            """,
+            (friend_id, user_id, user_id, friend_id),
+        )
 
         connection.commit()
         return {
@@ -250,6 +257,11 @@ def myFriends(account_id):
                 u.username, a.firstname, a.lastname, a.profile_photo,
                 f.status,
                 CASE WHEN f.user_id = %s THEN 'outgoing' ELSE 'incoming' END AS direction,
+                EXISTS (
+                    SELECT 1 FROM glow.glow.friends_closefriend c
+                    WHERE c.owner_id = %s
+                      AND c.friend_id = CASE WHEN f.user_id = %s THEN f.friend_id ELSE f.user_id END
+                ) AS is_close,
                 f.date_friend_request, f.date_became_friends
             FROM glow.glow.friends_friend f
             JOIN glow.glow.accounts_account a
@@ -259,7 +271,7 @@ def myFriends(account_id):
               AND f.status IN ('Friends', 'Pending')
             ORDER BY COALESCE(f.date_became_friends, f.date_friend_request) DESC
             """,
-            (account_id,) * 5,
+            (account_id,) * 7,
         )
         cols = [c[0] for c in cursor.description]
         rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
