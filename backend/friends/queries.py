@@ -357,3 +357,75 @@ def myFriends(account_id):
         else:
             out[r["direction"]].append(r)
     return out
+
+
+def peopleYouMayKnow(account_id, limit=5):
+    """Friends of your friends, most mutual friends first. Skips you and anyone
+    you already have a request or friendship with (either direction). If that
+    gives fewer than `limit`, fills up with recently active accounts."""
+    with connections["default"].cursor() as cursor:
+        cursor.execute(
+            """
+            WITH mine AS (
+                SELECT CASE WHEN user_id = %(me)s THEN friend_id ELSE user_id END AS id
+                FROM glow.glow.friends_friend
+                WHERE status = 'Friends' AND (user_id = %(me)s OR friend_id = %(me)s)
+            ),
+            known AS (
+                SELECT CASE WHEN user_id = %(me)s THEN friend_id ELSE user_id END AS id
+                FROM glow.glow.friends_friend
+                WHERE user_id = %(me)s OR friend_id = %(me)s
+            ),
+            fof AS (
+                SELECT CASE WHEN f.user_id = m.id THEN f.friend_id ELSE f.user_id END AS id,
+                       m.id AS via
+                FROM glow.glow.friends_friend f
+                JOIN mine m ON f.user_id = m.id OR f.friend_id = m.id
+                WHERE f.status = 'Friends'
+            )
+            SELECT a.id, u.username, a.firstname, a.lastname, a.profile_photo,
+                   COUNT(DISTINCT fof.via) AS mutual_count
+            FROM fof
+            JOIN glow.glow.accounts_account a ON a.id = fof.id
+            JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
+            WHERE u.is_active
+              AND fof.id <> %(me)s
+              AND fof.id NOT IN (SELECT id FROM known)
+            GROUP BY a.id, u.username, a.firstname, a.lastname, a.profile_photo
+            ORDER BY mutual_count DESC, a.id DESC
+            LIMIT %(limit)s
+            """,
+            {"me": account_id, "limit": limit},
+        )
+        cols = [c[0] for c in cursor.description]
+        people = [dict(zip(cols, r)) for r in cursor.fetchall()]
+
+        if len(people) < limit:
+            skip = [account_id] + [p["id"] for p in people]
+            cursor.execute(
+                """
+                SELECT a.id, u.username, a.firstname, a.lastname, a.profile_photo,
+                       0 AS mutual_count
+                FROM glow.glow.accounts_account a
+                JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
+                LEFT JOIN glow.glow.posts_post p ON p.account_id = a.id
+                WHERE u.is_active
+                  AND NOT (a.id = ANY(%(skip)s))
+                  AND a.id NOT IN (
+                      SELECT CASE WHEN user_id = %(me)s THEN friend_id ELSE user_id END
+                      FROM glow.glow.friends_friend
+                      WHERE user_id = %(me)s OR friend_id = %(me)s
+                  )
+                GROUP BY a.id, u.username, a.firstname, a.lastname, a.profile_photo
+                ORDER BY MAX(p."dateTime") DESC NULLS LAST, a.id DESC
+                LIMIT %(n)s
+                """,
+                {"me": account_id, "skip": skip, "n": limit - len(people)},
+            )
+            cols = [c[0] for c in cursor.description]
+            people += [dict(zip(cols, r)) for r in cursor.fetchall()]
+
+    for p in people:
+        for k in ("firstname", "lastname", "profile_photo"):
+            p[k] = p.get(k) or ""
+    return people

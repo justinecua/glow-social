@@ -16,9 +16,14 @@ from posts.services.external_feeds import (
     getRandomAnimeImage
 )
 
-from .discover import explore, feed, posts_by_tag, posts_by_user, search, single_post
+from .discover import bump_explore, explore, feed, mark_seen, new_posts_since, posts_by_tag, posts_by_user, search, single_post
 from .visibility import audience_id, can_view_post, viewer_account_id
 from accounts.auth_utils import account_id_for_user
+import re
+from .polls import PollError, clean_options, create_poll, poll_data, vote
+from .prompts import today_prompt
+from datetime import datetime
+import pytz
 from .queries import (
     getPosts,
     getPostsByUser,
@@ -46,7 +51,72 @@ class GetPosts(APIView):
             viewer = account_id_for_user(request.user)
         except Exception:
             viewer = None
-        return Response(feed(request, viewer, offset, limit))
+        seed, anchor = _feed_visit(request)
+        return Response(feed(request, viewer, offset, limit, seed=seed, anchor=anchor))
+
+
+def _feed_visit(request):
+    """The client's per-visit seed (ms timestamp of when the feed opened).
+    It shuffles the feed and freezes "now" for paging."""
+    raw = request.query_params.get("seed", "")
+    try:
+        ms = int(raw)
+        anchor = datetime.fromtimestamp(ms / 1000, tz=pytz.utc)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None, None
+    return raw, anchor
+
+
+class VotePoll(APIView):
+    """POST {"option_id": n}: vote on a post's poll (one vote each)."""
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request, post_id):
+        viewer = account_id_for_user(request.user)
+        if not can_view_post(post_id, viewer):
+            return Response({"detail": "Post not found."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            option_id = int(request.data.get("option_id"))
+            return Response(vote(post_id, option_id, viewer))
+        except (TypeError, ValueError):
+            return Response({"detail": "Pick an option."}, status=status.HTTP_400_BAD_REQUEST)
+        except PollError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class TodayPrompt(APIView):
+    """Today's prompt or photo challenge, with who has answered."""
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request):
+        return Response(today_prompt())
+
+
+class MarkSeen(APIView):
+    """POST {"ids": [...]}: posts that appeared on screen in the feed."""
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request):
+        ids = request.data.get("ids") or []
+        if not isinstance(ids, list):
+            return Response({"detail": "ids must be a list."}, status=status.HTTP_400_BAD_REQUEST)
+        n = mark_seen(account_id_for_user(request.user), ids[:100])
+        return Response({"marked": n})
+
+
+class NewPostsSince(APIView):
+    """Count of posts shared after the feed was opened, for the pill."""
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request):
+        _, since = _feed_visit(request)
+        if since is None:
+            return Response({"detail": "Invalid seed."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            viewer = account_id_for_user(request.user)
+        except Exception:
+            viewer = None
+        return Response(new_posts_since(viewer, since))
 
 class GetPostsByUser(APIView):
     permission_classes = (permissions.AllowAny,)
@@ -70,10 +140,32 @@ class CreatePost(APIView):
         caption = request.data.get("caption")
         photos = request.data.get("photos", [])
         taglist = request.data.get("taglist", [])
+        if not isinstance(taglist, list):
+            taglist = []
+        # #hashtags typed in the caption become tags too (prompt answers etc.)
+        found = re.findall(r"#(\w{2,50})", caption or "")
+        taglist = list(dict.fromkeys([str(t)[:50] for t in taglist] + found))[:10]
+
+        poll_in = request.data.get("poll")
+        options = None
+        if poll_in:
+            try:
+                options = clean_options((poll_in or {}).get("options"))
+            except PollError as e:
+                return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         data = create_post(accID, audience, caption, photos, taglist, request=request)
         if isinstance(data, dict) and data.get("id"):
+            bump_explore()
             data["audience"] = audience_key
+            data["poll"] = None
+            if options:
+                try:
+                    hours = int((poll_in or {}).get("hours") or 24)
+                except (TypeError, ValueError):
+                    hours = 24
+                create_poll(data["id"], options, hours)
+                data["poll"] = poll_data([data["id"]], accID).get(data["id"])
         return Response(data)
 
 class PostDetail(APIView):
@@ -109,6 +201,7 @@ class PostDetail(APIView):
 
         if fields:
             post.save(update_fields=fields)
+            bump_explore()
         return Response({"id": post.id, "caption": post.caption, "audience": audience_key or None})
 
     def delete(self, request, post_id):
@@ -127,6 +220,7 @@ class PostDetail(APIView):
                 except OSError:
                     pass
         post.delete()
+        bump_explore()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

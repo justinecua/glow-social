@@ -43,9 +43,9 @@ const GlowChainDialog = ({
     <Dialog open={noteId != null} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="bg-[var(--home-card)] sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Glow chain</DialogTitle>
+          <DialogTitle>Kudos chain</DialogTitle>
           <DialogDescription>
-            Each person received a glow and passed it on.
+            Each person received kudos and passed them on.
           </DialogDescription>
         </DialogHeader>
         {isLoading || !data ? (

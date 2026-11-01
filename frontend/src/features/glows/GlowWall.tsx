@@ -26,11 +26,11 @@ const GlowWall = ({ profile }: { profile: any }) => {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[color-mix(in_srgb,var(--button-color-bg)_8%,transparent)] px-5 py-4 dark:bg-[color-mix(in_srgb,var(--button-color-bg)_18%,transparent)]">
         <div>
           <p className="flex items-center gap-2 font-semibold">
-            {formatCount(data?.count)} glow{data?.count === 1 ? "" : "s"} received
+            {formatCount(data?.count)} kudos received
           </p>
           <p className="text-sm text-[var(--color-subtitle)]">
             {isOwn
-              ? "Things people appreciate about you. Pass a glow on to keep the chain going!"
+              ? "Things people appreciate about you. Pass kudos on to keep the chain going!"
               : `Things people appreciate about ${name}.`}
           </p>
         </div>
@@ -39,12 +39,12 @@ const GlowWall = ({ profile }: { profile: any }) => {
             onClick={() => setSendOpen(true)}
             className="cursor-pointer bg-[var(--button-color-bg)] text-white hover:opacity-90"
           >
-            Send a glow
+            Send kudos
           </Button>
         )}
         {!me && (
           <Button asChild variant="outline">
-            <Link to="/register">Join to send a glow</Link>
+            <Link to="/register">Join to send kudos</Link>
           </Button>
         )}
       </div>
@@ -54,8 +54,8 @@ const GlowWall = ({ profile }: { profile: any }) => {
       ) : notes.length === 0 ? (
         <p className="py-12 text-center text-sm text-[var(--color-subtitle)]">
           {isOwn
-            ? "No glows yet. Send someone a glow and it may come back around."
-            : `Be the first to send ${name} a glow.`}
+            ? "No kudos yet. Send someone kudos and it may come back around."
+            : `Be the first to send ${name} kudos.`}
         </p>
       ) : (
         <div className="columns-1 gap-4 sm:columns-2 lg:columns-3">

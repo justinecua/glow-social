@@ -105,7 +105,7 @@ const PersonDetails = ({ personId, onClose }: { personId: number; onClose: () =>
             <UserRound className="h-4 w-4" /> View profile
           </Link>
           <button type="button" onClick={() => setGlowOpen(true)} className={actionRow}>
-            <Diamond className="h-4 w-4" /> Send a glow
+            <Diamond className="h-4 w-4" /> Send kudos
           </button>
           {friend && (
             <button

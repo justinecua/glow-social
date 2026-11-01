@@ -4,7 +4,7 @@ import { lazy, Suspense } from "react";
 
 // Loaded on demand; emoji-picker-react is a large dependency.
 const EmojiPicker = lazy(() => import("emoji-picker-react"));
-import { SmilePlus, Image, Check, ChevronDown, Loader2, X } from "lucide-react";
+import { SmilePlus, Image, Check, ChevronDown, ListChecks, Loader2, Plus, X } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { AUDIENCES, audienceInfo, type AudienceKey } from "@/features/growth/audience";
 import {
@@ -26,6 +26,19 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [images, setImages] = useState([]);
+  // Poll: 2-4 options, shown under the text. Photos and polls don't mix.
+  const [pollOn, setPollOn] = useState(false);
+  const [pollOptions, setPollOptions] = useState<string[]>(["", ""]);
+  const [pollHours, setPollHours] = useState(24);
+  // Set when the composer was opened from today's prompt.
+  const [prompt, setPrompt] = useState<{ text: string; tag: string } | null>(null);
+  const filledOptions = pollOptions.map((o) => o.trim()).filter(Boolean);
+  const pollValid = !pollOn || (filledOptions.length >= 2 && new Set(filledOptions.map((o) => o.toLowerCase())).size === filledOptions.length);
+  const resetPoll = () => {
+    setPollOn(false);
+    setPollOptions(["", ""]);
+    setPollHours(24);
+  };
   // Who can see the post; remembers your last choice on this device.
   const [audience, setAudience] = useState<AudienceKey>(() => {
     try {
@@ -54,6 +67,7 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
 
   const handleSubmit = async () => {
     if (!text.trim() && images.length === 0) return;
+    if (!pollValid) return;
 
     try {
       const base64Images = await Promise.all(
@@ -77,7 +91,8 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
         audience,
         caption: text,
         photos: base64Images,
-        taglist: [],
+        taglist: prompt ? [prompt.tag] : [],
+        ...(pollOn ? { poll: { options: filledOptions, hours: pollHours } } : {}),
       };
 
       const response = await createPost(payload).unwrap();
@@ -85,6 +100,8 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
 
       setText("");
       setImages([]);
+      resetPoll();
+      setPrompt(null);
       setOpen(false);
       onPostCreated?.(response);
       // Let the feed know, whichever Create button was used.
@@ -92,14 +109,23 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
       // Created from another page: take the user to the feed to see it.
       if (pathname !== "/") navigate("/");
       else window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to create post:", err);
-      toast.error("Failed to create post. Please try again.");
+      toast.error(err?.data?.detail || "Failed to create post. Please try again.");
     }
   };
 
   useImperativeHandle(ref, () => ({
-    open: () => setOpen(true),
+    // open({ prompt }) starts an answer to today's prompt, tagged #Tag.
+    open: (opts?: { prompt?: { text: string; tag: string } }) => {
+      if (opts?.prompt) {
+        setPrompt(opts.prompt);
+        setText((t) => (t.trim() ? t : `#${opts.prompt!.tag} `));
+      } else {
+        setPrompt(null);
+      }
+      setOpen(true);
+    },
     close: () => setOpen(false),
   }));
 
@@ -149,7 +175,12 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
   }, [showEmojiPicker]);
 
   const MAX = 800; // matches the server's caption limit
-  const canPost = (text.trim().length > 0 || images.length > 0) && text.length <= MAX && !isLoading;
+  const canPost =
+    (text.trim().length > 0 || images.length > 0) &&
+    (!pollOn || text.trim().length > 0) &&
+    pollValid &&
+    text.length <= MAX &&
+    !isLoading;
   const toolBtn =
     "flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-[var(--button-color-bg)] transition-colors hover:bg-[color-mix(in_srgb,var(--button-color-bg)_12%,transparent)] dark:text-white dark:hover:bg-[var(--button-hover-bg-color)]";
 
@@ -159,7 +190,9 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
         className="flex max-h-[90dvh] w-[95%] max-w-[95vw] flex-col gap-0 rounded-2xl bg-[var(--home-card)] p-0 sm:w-[560px] sm:max-w-[560px]"
         onOpenAutoFocus={(e) => {
           e.preventDefault();
-          textareaRef.current?.focus();
+          const t = textareaRef.current as HTMLTextAreaElement | null;
+          t?.focus();
+          if (t) t.selectionStart = t.selectionEnd = t.value.length;
         }}
       >
         <DialogTitle className="sr-only">New post</DialogTitle>
@@ -180,6 +213,22 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
 
         {/* Composer: avatar + writing area */}
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-3 pt-3 custom-scrollbar">
+          {prompt && (
+            <div className="mb-3 flex items-start gap-2 rounded-xl bg-[color-mix(in_srgb,var(--button-color-bg)_10%,transparent)] px-3 py-2 text-sm">
+              <span className="flex-1">
+                <span className="block text-xs font-medium text-[var(--button-color-bg)]">Answering today's prompt</span>
+                {prompt.text}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPrompt(null)}
+                aria-label="Don't answer the prompt"
+                className="cursor-pointer rounded-full p-1 text-[var(--color-subtitle)] hover:bg-[var(--button-hover-bg-color)]"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
           <div className="flex items-center gap-3">
             <Avatar
               src={user?.user?.profile_photo}
@@ -199,10 +248,10 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
                   handleSubmit();
                 }
               }}
-              placeholder="What's glowing today?"
+              placeholder={pollOn ? "Ask a question…" : "What's glowing today?"}
               aria-label="Post text"
-              rows={previews.length ? 2 : 4}
-              className={`mt-3 w-full ${previews.length ? "min-h-16" : "min-h-44"} resize-none border-none bg-transparent text-[15px] leading-relaxed text-foreground shadow-none outline-none placeholder:text-[var(--color-subtitle)] [overflow-wrap:anywhere]`}
+              rows={previews.length || pollOn ? 2 : 4}
+              className={`mt-3 w-full ${previews.length || pollOn ? "min-h-16" : "min-h-44"} resize-none border-none bg-transparent text-[15px] leading-relaxed text-foreground shadow-none outline-none placeholder:text-[var(--color-subtitle)] [overflow-wrap:anywhere]`}
             />
 
             {previews.length > 0 && (
@@ -227,13 +276,78 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
                 ))}
               </div>
             )}
+            {pollOn && (
+              <div className="mt-2 rounded-xl border p-3">
+                <div className="flex flex-col gap-2">
+                  {pollOptions.map((opt, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <input
+                        value={opt}
+                        maxLength={80}
+                        onChange={(e) =>
+                          setPollOptions((prev) => prev.map((o, j) => (j === i ? e.target.value : o)))
+                        }
+                        placeholder={`Option ${i + 1}`}
+                        aria-label={`Option ${i + 1}`}
+                        className="h-10 flex-1 rounded-lg border bg-transparent px-3 text-sm outline-none focus:border-[var(--button-color-bg)]"
+                      />
+                      {pollOptions.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => setPollOptions((prev) => prev.filter((_, j) => j !== i))}
+                          aria-label={`Remove option ${i + 1}`}
+                          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-[var(--color-subtitle)] hover:bg-[var(--button-hover-bg-color)]"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                  {pollOptions.length < 4 && (
+                    <button
+                      type="button"
+                      onClick={() => setPollOptions((prev) => [...prev, ""])}
+                      className="flex cursor-pointer items-center gap-1 rounded-full px-2 py-1 font-medium text-[var(--button-color-bg)] hover:bg-[var(--button-hover-bg-color)]"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Add option
+                    </button>
+                  )}
+                  <label className="ml-auto flex items-center gap-1.5 text-[var(--color-subtitle)]">
+                    Ends in
+                    <select
+                      value={pollHours}
+                      onChange={(e) => setPollHours(Number(e.target.value))}
+                      className="rounded-md border bg-transparent px-2 py-1 text-xs text-[var(--title-color)]"
+                    >
+                      <option value={24} className="bg-[var(--home-card)]">1 day</option>
+                      <option value={72} className="bg-[var(--home-card)]">3 days</option>
+                      <option value={168} className="bg-[var(--home-card)]">1 week</option>
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={resetPoll}
+                    className="cursor-pointer rounded-full px-2 py-1 text-[var(--color-subtitle)] hover:bg-[var(--button-hover-bg-color)] hover:text-red-500"
+                  >
+                    Remove poll
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Toolbar */}
         <div className="relative flex shrink-0 items-center gap-1 border-t px-3 py-2.5">
-          <label className={toolBtn} title="Add photos" aria-label="Add photos">
+          <label
+            className={`${toolBtn} ${pollOn ? "pointer-events-none opacity-40" : ""}`}
+            title={pollOn ? "Remove the poll to add photos" : "Add photos"}
+            aria-label="Add photos"
+          >
             <input
+              disabled={pollOn}
               type="file"
               accept="image/*"
               multiple
@@ -246,6 +360,18 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
             />
             <Image className="h-5 w-5" />
           </label>
+
+          <button
+            type="button"
+            onClick={() => (pollOn ? resetPoll() : setPollOn(true))}
+            disabled={images.length > 0}
+            className={`${toolBtn} disabled:cursor-not-allowed disabled:opacity-40 ${pollOn ? "bg-[color-mix(in_srgb,var(--button-color-bg)_12%,transparent)]" : ""}`}
+            title={images.length > 0 ? "Remove photos to add a poll" : pollOn ? "Remove poll" : "Add a poll"}
+            aria-label="Poll"
+            aria-pressed={pollOn}
+          >
+            <ListChecks className="h-5 w-5" />
+          </button>
 
           <div ref={emojiPickerRef} className="relative">
             <button

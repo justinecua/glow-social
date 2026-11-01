@@ -1,15 +1,22 @@
 import ExpandableText from "@/components/ui/custom/expandable";
-import { Diamond, Edit3, Users } from "lucide-react";
+import { Diamond, Edit3, HandHeart, Users } from "lucide-react";
+import { useGetGlowWallQuery } from "@/redux/services/growth";
 import { useGetTotalFriendsQuery } from "@/redux/services/accounts/accounts";
 import { useGetTotalGlowsPostByUserQuery } from "@/redux/services/posts/posts";
 import { formatCount } from "@/lib/formatCount";
+import { useStoredUser } from "@/utils/auth";
 
 const ProfileBio = ({ item, id }) => {
+  const me = useStoredUser();
+  const isOwn = !!me && String(me?.user?.account_id) === String(id);
   const { data: totalFriends, isFetching } = useGetTotalFriendsQuery({
     account_id: id,
   });
   const { data: totalGlows, isLoading } = useGetTotalGlowsPostByUserQuery({
     account_id: id,
+  });
+  const { data: kudos, isLoading: kudosLoading } = useGetGlowWallQuery({
+    account_id: Number(id),
   });
 
   return (
@@ -22,7 +29,7 @@ const ProfileBio = ({ item, id }) => {
         ) : (
           <p className="text-[var(--color-subtitle)] flex items-center text-sm">
             <Edit3 className="w-4 h-4 mr-2" />
-            {item?.username} hasn't added a bio yet
+            {isOwn ? "Add a bio with Edit profile" : `${item?.username} hasn't added a bio yet`}
           </p>
         )}
       </div>
@@ -35,6 +42,13 @@ const ProfileBio = ({ item, id }) => {
             {isLoading ? "..." : formatCount(totalGlows as any)}
           </div>
           <span className="text-sm text-[var(--color-subtitle)]">Glows</span>
+        </div>
+        <div className="flex flex-col items-center">
+          <div className="flex items-center text-sm font-medium">
+            <HandHeart className="w-4 h-4 mr-1 text-[var(--accent-color)]" />
+            {kudosLoading ? "..." : formatCount(kudos?.count ?? 0)}
+          </div>
+          <span className="text-sm text-[var(--color-subtitle)]">Kudos</span>
         </div>
         <div className="flex flex-col items-center">
           <div className="flex items-center text-sm font-medium">

@@ -185,6 +185,23 @@ class GetProfile(APIView):
         data = getProfile(profile_id, viewer_user_id=viewer.id if viewer else None)
         return Response(data)
 
+class UpdateMyProfile(APIView):
+    """PATCH your own profile: names, bio, gender, birthday, photos."""
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def patch(self, request):
+        from .profile_edit import ProfileError, update_profile
+
+        account = Account.objects.filter(auth_user=request.user).first()
+        if not account:
+            return Response({"detail": "Account not found."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            data = update_profile(account, request.data, request=request)
+        except ProfileError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(data)
+
+
 class GetTotalGlowsPostByUser(APIView):
     permission_classes = (permissions.AllowAny,)
 

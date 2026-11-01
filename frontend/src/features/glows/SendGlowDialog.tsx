@@ -52,12 +52,12 @@ const SendGlowDialog = ({ open, onOpenChange, recipient }: Props) => {
       }).unwrap();
       toast.success(
         note.chain_length > 1
-          ? `Glow passed on! This chain is now ${note.chain_length} people long.`
-          : `You sent ${name} a glow.`
+          ? `Kudos passed on! This chain is now ${note.chain_length} people long.`
+          : `You sent ${name} kudos.`
       );
       onOpenChange(false);
     } catch (err: any) {
-      toast.error(err?.data?.detail || "Couldn't send your glow. Try again.");
+      toast.error(err?.data?.detail || "Couldn't send your kudos. Try again.");
     }
   };
 
@@ -67,16 +67,16 @@ const SendGlowDialog = ({ open, onOpenChange, recipient }: Props) => {
         <form onSubmit={submit} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              Send {name} a glow
+              Send {name} kudos
             </DialogTitle>
             <DialogDescription>
-              A short note of appreciation. It'll appear on their Glow Wall.
+              A short note of appreciation. It'll appear in their Kudos tab.
             </DialogDescription>
           </DialogHeader>
 
           {status?.passes_available > 0 && (
             <p className="rounded-lg bg-[color-mix(in_srgb,var(--button-color-bg)_10%,transparent)] px-3 py-2 text-xs dark:bg-[color-mix(in_srgb,var(--button-color-bg)_22%,transparent)]">
-              You're passing on a glow someone sent you, so this adds to their chain.
+              You're passing on kudos someone sent you, so this adds to their chain.
             </p>
           )}
 
@@ -92,7 +92,7 @@ const SendGlowDialog = ({ open, onOpenChange, recipient }: Props) => {
             />
             <div className="mt-1 flex justify-between text-xs text-[var(--color-subtitle)]">
               <span>
-                {remaining !== null && `${remaining} glow${remaining === 1 ? "" : "s"} left today`}
+                {remaining !== null && `${remaining} kudos left today`}
               </span>
               <span>
                 {message.length}/{MAX}
@@ -122,7 +122,7 @@ const SendGlowDialog = ({ open, onOpenChange, recipient }: Props) => {
               className="cursor-pointer bg-[var(--button-color-bg)] text-white hover:opacity-90"
             >
               {isLoading && <Loader2 className="animate-spin" />}
-              {outOfGlows ? "No glows left today" : "Send glow"}
+              {outOfGlows ? "No kudos left today" : "Send kudos"}
             </Button>
           </DialogFooter>
         </form>
