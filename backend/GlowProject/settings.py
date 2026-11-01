@@ -43,6 +43,9 @@ SITE_ID = 1
 # Application definition
 
 INSTALLED_APPS = [
+    # Must be first: makes `manage.py runserver` serve ASGI, so WebSockets
+    # (friend requests, notifications, chat) work in development too.
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -63,6 +66,7 @@ INSTALLED_APPS = [
     'notifications',
     'interactions',
     'kudos',
+    'messaging',
     'drf_yasg',
     'corsheaders',
     'rest_framework_simplejwt.token_blacklist',

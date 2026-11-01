@@ -50,6 +50,21 @@ export const receivedApi = api.injectEndpoints({
       transformResponse: (response) => response,
       transformErrorResponse: (response) => response,
     }),
+    updatePost: builder.mutation({
+      query: ({ post_id, ...body }) => ({
+        url: `/posts/post/${post_id}/manage/`,
+        method: "PATCH",
+        body,
+        timeout,
+      }),
+    }),
+    deletePost: builder.mutation({
+      query: ({ post_id }) => ({
+        url: `/posts/post/${post_id}/manage/`,
+        method: "DELETE",
+        timeout,
+      }),
+    }),
     sendGlow: builder.mutation({
       query: (body) => ({
         url: `/posts/sendGlow/`,
@@ -79,6 +94,8 @@ export const {
   useGetPostsByUserQuery,
   useGetTotalGlowsPostByUserQuery,
   useCreatePostMutation,
+  useUpdatePostMutation,
+  useDeletePostMutation,
   useSendGlowMutation,
   useSendunGlowMutation,
 } = receivedApi;

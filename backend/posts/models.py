@@ -42,24 +42,3 @@ class Tag(models.Model):
 
     def __str__(self):
         return self.tag
-
-
-
-class DailyPrompt(models.Model):
-    """A question shown at the top of the feed to give people something to
-    post about. Set `date` to schedule one for a specific day; prompts
-    without a date rotate automatically."""
-
-    text = models.CharField(max_length=200)
-    tag = models.SlugField(
-        max_length=50, blank=True, default="",
-        help_text="Added to posts made from this prompt, e.g. 'desksetup'.",
-    )
-    date = models.DateField(null=True, blank=True, unique=True)
-    is_active = models.BooleanField(default=True)
-
-    class Meta:
-        ordering = ["date", "id"]
-
-    def __str__(self):
-        return f"{self.date or 'rotating'}: {self.text}"

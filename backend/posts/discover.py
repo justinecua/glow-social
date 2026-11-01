@@ -266,44 +266,6 @@ def single_post(post_id, request, viewer_id=None):
     return posts[0] if posts else None
 
 
-# ---------------------------------------------------------------- daily prompt
-DEFAULT_PROMPTS = [
-    ("What made you smile today?", "smile"),
-    ("Show us your desk setup 📸", "desksetup"),
-    ("What are you listening to right now? 🎧", "nowplaying"),
-    ("Best thing you ate this week?", "foodie"),
-    ("Share a photo from your camera roll that makes you happy", "happyplace"),
-    ("What's one small win you had this week? 🏆", "smallwins"),
-    ("Recommend a show, game or book to everyone", "recommend"),
-    ("What does your view look like right now?", "myview"),
-    ("Who's someone that deserves a glow today?", "passtheglow"),
-    ("What's on your to-do list for the weekend?", "weekendplans"),
-    ("Throwback! Post an old photo and tell the story", "throwback"),
-    ("What's a skill you want to learn this year?", "goals"),
-    ("Pet photo time 🐾 (or your dream pet)", "pets"),
-    ("Describe your day in 3 emojis", "3emojis"),
-]
-
-
-def today_prompt():
-    from django.utils import timezone
-
-    from .models import DailyPrompt
-
-    today = timezone.localdate()
-    scheduled = DailyPrompt.objects.filter(date=today, is_active=True).first()
-    if scheduled:
-        return {"text": scheduled.text, "tag": scheduled.tag, "date": today.isoformat()}
-
-    rotating = list(DailyPrompt.objects.filter(date__isnull=True, is_active=True))
-    if rotating:
-        p = rotating[today.toordinal() % len(rotating)]
-        return {"text": p.text, "tag": p.tag, "date": today.isoformat()}
-
-    text, tag = DEFAULT_PROMPTS[today.toordinal() % len(DEFAULT_PROMPTS)]
-    return {"text": text, "tag": tag, "date": today.isoformat()}
-
-
 def posts_by_user(account_id, request, viewer_id=None, limit=500):
     """A profile's posts, limited to what the viewer may see."""
     return _posts("WHERE p.account_id = %s", (account_id,), limit=limit,

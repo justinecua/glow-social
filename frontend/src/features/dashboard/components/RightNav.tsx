@@ -6,7 +6,8 @@ import { Link } from "react-router-dom";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Gift, LogOut, Settings } from "lucide-react";
+import { Gift, LogIn, LogOut, PanelRightClose, PanelRightOpen, Settings, UserPlus } from "lucide-react";
+import { useSidebars } from "@/components/layout/useSidebars";
 import LogoutConfirmDialog from "@/components/layout/LogoutConfirmDialog";
 import InviteDialog from "@/features/growth/InviteDialog";
 import { useGetMyInvitesQuery } from "@/redux/services/growth";
@@ -19,8 +20,80 @@ import { formatCount } from "@/lib/formatCount";
 const displayName = (u: any) =>
   [u?.firstname, u?.lastname].filter(Boolean).join(" ") || u?.username || "";
 
+const railBtn =
+  "flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md text-[var(--color-subtitle)] transition-colors hover:bg-[var(--button-hover-bg-color)] hover:text-[var(--title-color)]";
+
+/** Collapse / expand the right sidebar. */
+const RightToggle = ({ collapsed, onClick }: { collapsed: boolean; onClick: () => void }) => {
+  const Icon = collapsed ? PanelRightOpen : PanelRightClose;
+  const label = collapsed ? "Expand sidebar" : "Collapse sidebar";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md border text-[var(--color-subtitle)] transition-colors hover:bg-[var(--button-hover-bg-color)] hover:text-[var(--title-color)]"
+    >
+      <Icon className="h-[1.1rem] w-[1.1rem]" />
+    </button>
+  );
+};
+
+const railShell =
+  "Left fixed right-0 hidden h-full w-20 flex-col items-center justify-between gap-4 overflow-y-auto overflow-x-hidden bg-[var(--home-card)] px-3 py-7 xl:flex";
+
+/** Collapsed right sidebar: the same actions, as icons. */
+const RightRail = ({ user, onExpand }: { user: any; onExpand: () => void }) => {
+  const me = user?.user ?? null;
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
+
+  return (
+    <aside className={railShell} aria-label="Sidebar">
+      <div className="flex flex-col items-center gap-2">
+        {me ? (
+          <>
+            <Link to={`/profile/${me.account_id}`} title={`${displayName(me)} (your profile)`} className="mb-2">
+              <Avatar src={me.profile_photo} alt={me.username} className="h-11 w-11" />
+            </Link>
+            <Link to="/settings" className={railBtn} aria-label="Settings" title="Settings">
+              <Settings className="h-5 w-5" />
+            </Link>
+            <button type="button" onClick={() => setInviteOpen(true)} className={railBtn} aria-label="Invite friends" title="Invite friends">
+              <Gift className="h-5 w-5" />
+            </button>
+            <button type="button" onClick={() => setConfirmLogout(true)} className={railBtn} aria-label="Log out" title="Log out">
+              <LogOut className="h-5 w-5" />
+            </button>
+          </>
+        ) : (
+          <>
+            <Link to="/login" className={railBtn} aria-label="Log in" title="Log in">
+              <LogIn className="h-5 w-5" />
+            </Link>
+            <Link to="/register" className={railBtn} aria-label="Create account" title="Create account">
+              <UserPlus className="h-5 w-5" />
+            </Link>
+          </>
+        )}
+
+      </div>
+
+      <RightToggle collapsed onClick={onExpand} />
+
+      {me && (
+        <>
+          <LogoutConfirmDialog open={confirmLogout} onOpenChange={setConfirmLogout} />
+          <InviteDialog open={inviteOpen} onOpenChange={setInviteOpen} username={me.username} />
+        </>
+      )}
+    </aside>
+  );
+};
+
 /** Signed-in right sidebar: you, inviting friends, people to discover. */
-const MemberPanel = ({ user }: { user: any }) => {
+const MemberPanel = ({ user, onCollapse }: { user: any; onCollapse: () => void }) => {
   const me = user?.user ?? {};
   const [inviteOpen, setInviteOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
@@ -116,7 +189,12 @@ const MemberPanel = ({ user }: { user: any }) => {
           </section>
         )}
 
-        <LegalLinks variant="footer" className="mt-auto" />
+        <div className="mt-auto">
+          <div className="mb-3 flex justify-end">
+            <RightToggle collapsed={false} onClick={onCollapse} />
+          </div>
+          <LegalLinks variant="footer" />
+        </div>
       </CardContent>
 
       <LogoutConfirmDialog open={confirmLogout} onOpenChange={setConfirmLogout} />
@@ -130,6 +208,7 @@ const MemberPanel = ({ user }: { user: any }) => {
 const RightNav = () => {
   const user = useStoredUser();
   const checking = useAuthChecking();
+  const { rightCollapsed, toggleRight } = useSidebars();
   // Only visitors see "New On Glow", so don't fetch (or wait) for it when
   // signed in.
   const { data: newUsers, isLoading } = useGetNewUsersQuery(undefined, {
@@ -140,6 +219,13 @@ const RightNav = () => {
   const setImgError = (index) => {
     setImgErrors((prev) => ({ ...prev, [index]: true }));
   };
+
+  if (rightCollapsed && !checking) {
+    return <RightRail user={user} onExpand={toggleRight} />;
+  }
+  if (rightCollapsed && checking) {
+    return <aside className={railShell} aria-hidden />;
+  }
 
   // Still checking sign-in: show only what both versions share (the footer)
   // rather than guessing and swapping layouts.
@@ -153,7 +239,7 @@ const RightNav = () => {
     );
   }
 
-  const isAuthenticated = () => <MemberPanel user={user} />;
+  const isAuthenticated = () => <MemberPanel user={user} onCollapse={toggleRight} />;
 
   const isNotAuthenticated = () => {
     return (
@@ -215,7 +301,12 @@ const RightNav = () => {
               )}
             </div>
           </div>
-          <LegalLinks variant="footer" className="mt-auto" />
+          <div className="mt-auto">
+            <div className="mb-3 flex justify-end">
+              <RightToggle collapsed={false} onClick={toggleRight} />
+            </div>
+            <LegalLinks variant="footer" />
+          </div>
         </CardContent>
       </Card>
     );

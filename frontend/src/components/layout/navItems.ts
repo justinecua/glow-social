@@ -1,6 +1,7 @@
 import {
   Compass,
   House,
+  MessageCircle,
   Info,
   LogIn,
   Search,
@@ -31,6 +32,7 @@ export const memberLinks = (accountId?: number | string): NavLinkItem[] => [
   { to: "/", label: "Home", icon: House },
   { to: "/explore", label: "Explore", icon: Compass },
   { to: "/search", label: "Search", icon: Search },
+  { to: "/messages", label: "Messages", icon: MessageCircle },
   { to: "/friends", label: "Friends", icon: UsersRound },
   ...(accountId
     ? [{ to: `/profile/${accountId}`, label: "Profile", icon: UserRound }]

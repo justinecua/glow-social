@@ -4,11 +4,14 @@ import { useStoredUser } from "@/utils/auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { useGetPostsByUserQuery } from "@/redux/services/posts/posts";
 import ProfileTabs from "../components/ProfileTabs";
+import { useLivePosts } from "@/features/posts/livePosts";
 import ProfileName from "../components/ProfileName";
 import ProfileCover from "../components/ProfileCover";
 import SkeletonProfile from "@/features/dashboard/components/Skeleton/skeletonProfile";
 import ProfileBio from "../components/ProfileBio";
 import { use, useEffect } from "react";
+
+const EMPTY: any[] = [];
 
 const ProfilePage = () => {
   const { id } = useParams();
@@ -28,7 +31,7 @@ const ProfilePage = () => {
     errorUser,
   } = useGetPostsByUserQuery({ account_id: id });
 
-  const posts = userPosts?.results ?? [];
+  const posts = useLivePosts<any>((userPosts as any)?.results ?? EMPTY);
   const allPhotos = posts.flatMap((post) => post.photos || []);
   // Get all photos from all posts into one flat array, skipping posts with no photos (Flat array means a simple list with no nested arrays)
 

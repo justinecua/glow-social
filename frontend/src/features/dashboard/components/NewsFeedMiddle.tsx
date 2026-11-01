@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import PostPhotos from "./Feed/PostPhotos";
 import PostReactions from "./Feed/PostReactions";
 import PostTopNav from "./Feed/PostTopNav";
+import { useLivePosts } from "@/features/posts/livePosts";
 import PostCaptions from "./Feed/PostCaptions";
 import { SkeletonFeed } from "./Skeleton/skeletonPosts";
 import InfiniteScroll from "react-infinite-scroll-component";
@@ -12,7 +13,6 @@ import PhotoDialog from "./modal/PhotoDialog";
 import CreatePostDialog from "./modal/CreatePostDialog";
 import { useAuthChecking, useStoredUser } from "@/utils/auth";
 import WelcomeSteps from "@/features/growth/WelcomeSteps";
-import DailyPromptCard from "@/features/growth/DailyPromptCard";
 import CaughtUpCard from "@/features/growth/CaughtUpCard";
 
 const LIMIT = 7;
@@ -21,7 +21,9 @@ const NewsFeedMiddle = () => {
   const user = useStoredUser() as any;
   const accountId = user?.user?.account_id;
   const [offset, setOffset] = useState(0);
-  const [allPosts, setAllPosts] = useState<any[]>([]);
+  const [loadedPosts, setAllPosts] = useState<any[]>([]);
+  // Applies edits/deletions made from the post ⋯ menu.
+  const allPosts = useLivePosts(loadedPosts);
   // Wait until we know who's signed in: the feed order depends on it
   // (friends first), so fetching as a visitor first would reshuffle it.
   const checking = useAuthChecking();
@@ -67,7 +69,7 @@ const NewsFeedMiddle = () => {
     else refetch();
   };
 
-  // Posts created from any Create button (sidebar, floating menu, prompts)
+  // Posts created from any Create button (sidebar, floating menu)
   useEffect(() => {
     const onCreated = (e: Event) => {
       const post = (e as CustomEvent).detail;
@@ -86,13 +88,10 @@ const NewsFeedMiddle = () => {
   const renderSkeletons = () => <SkeletonFeed count={3} />;
 
   const hasMore = data?.results?.length >= LIMIT;
-  // Show "You're all caught up" right before the first older post (or at
-  // the end of the feed if everything loaded is new).
-  const firstOldIndex = allPosts.findIndex((p) => p.is_fresh === false);
-  const showCaughtUpAtEnd = firstOldIndex === -1 && !hasMore && allPosts.length > 0;
+  // "You're all caught up": shown once, at the very end of the feed.
+  const showCaughtUp = !hasMore && allPosts.length > 0;
 
-  const openCreate = (prompt?: { text: string; tag: string }) =>
-    createRef.current?.open(prompt ? { prompt } : undefined);
+  const openCreate = () => createRef.current?.open();
 
   return (
     <div className="Middle ft w-full max-w-xl h-full">
@@ -109,7 +108,6 @@ const NewsFeedMiddle = () => {
         {user && accountId && (
           <WelcomeSteps accountId={accountId} onCreatePost={() => openCreate()} />
         )}
-        <DailyPromptCard signedIn={!!user} onAnswer={(p) => openCreate(p)} />
       </div>
 
       {allPosts.length === 0 && (isFetching || checking) && renderSkeletons()}
@@ -121,9 +119,8 @@ const NewsFeedMiddle = () => {
         loader={<>{renderSkeletons()}</>}
         scrollThreshold={0.9}
       >
-        {allPosts.map((post, index) => (
+        {allPosts.map((post) => (
           <Fragment key={post.id}>
-            {index === firstOldIndex && <CaughtUpCard hadNewPosts={index > 0} />}
             <Card className="bg-[var(--home-card)] mb-3">
               <CardContent>
                 <PostTopNav post={post} />
@@ -137,7 +134,7 @@ const NewsFeedMiddle = () => {
             </Card>
           </Fragment>
         ))}
-        {showCaughtUpAtEnd && <CaughtUpCard hadNewPosts />}
+        {showCaughtUp && <CaughtUpCard />}
       </InfiniteScroll>
 
       <FloatingActions refetchPosts={refetchPosts} />
