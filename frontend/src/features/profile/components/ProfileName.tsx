@@ -13,6 +13,9 @@ import { toast } from "sonner";
 import { useWebSocket } from "@/utils/WebSocketContext";
 import { useCheckUserFriendRequestQuery } from "@/redux/services/friends/friends";
 import SendGlowDialog from "@/features/glows/SendGlowDialog";
+import { useNavigate } from "react-router-dom";
+import { MessageCircle } from "lucide-react";
+import { useStartConversationMutation } from "@/redux/services/messages";
 
 const ProfileName = ({ item, id }) => {
   const user = useStoredUser();
@@ -23,6 +26,8 @@ const ProfileName = ({ item, id }) => {
   const [canceling, setCanceling] = useState(false);
   const [unfriending, setUnfriend] = useState(false);
   const [glowOpen, setGlowOpen] = useState(false);
+  const navigate = useNavigate();
+  const [startConversation, { isLoading: opening }] = useStartConversationMutation();
   const cap = (v?: string) => (v ? v.charAt(0).toUpperCase() + v.slice(1) : "");
   // Fall back to the username when someone hasn't set a name yet.
   const displayName =
@@ -174,10 +179,27 @@ const ProfileName = ({ item, id }) => {
             {!isLoading && !isOwnProfile && (
               <>
                 {Friends ? (
+                  <>
                   <Button
+                    onClick={async () => {
+                      try {
+                        const conv = await startConversation({ member_ids: [Number(id)] }).unwrap();
+                        navigate(`/messages/${conv.id}`);
+                      } catch (err: any) {
+                        toast.error(err?.data?.detail || "Couldn't open the chat.");
+                      }
+                    }}
+                    disabled={opening}
+                    className="cursor-pointer flex items-center gap-2 bg-[var(--button-color-bg)] text-white hover:opacity-90"
+                  >
+                    {opening ? <Loader2 className="animate-spin w-4 h-4" /> : <MessageCircle />}
+                    Message
+                  </Button>
+                  <Button
+                    variant="outline"
                     onClick={unfriend}
                     disabled={unfriending}
-                    className="cursor-pointer bg-blue-500 text-white hover:bg-[var(--button-color-bg-hover)] cursor-pointer flex items-center gap-2 bg-[var(--button-color-bg)]"
+                    className="cursor-pointer flex items-center gap-2"
                   >
                     {unfriending ? (
                       <>
@@ -191,6 +213,7 @@ const ProfileName = ({ item, id }) => {
                       </>
                     )}
                   </Button>
+                  </>
                 ) : PendingRequestSender ? (
                   <Button
                     onClick={cancelFriendRequest}

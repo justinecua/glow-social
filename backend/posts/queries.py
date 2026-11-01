@@ -244,7 +244,7 @@ def create_post(accID, audience, caption, photos, taglist, request=None):
             "account_id": accID,
             "caption": caption,
             "comment_count": comment_count,
-            "dateTime": f"• {time_ago(now)}",
+            "dateTime": time_ago(now),
             "firstname": firstname,
             "lastname": lastname,
             "glow_count": glow_count,

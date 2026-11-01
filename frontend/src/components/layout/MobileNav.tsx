@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuthChecking, useStoredUser } from "@/utils/auth";
 import { Skeleton } from "@/components/ui/skeleton";
+import UnreadBadge from "@/features/messages/UnreadBadge";
 import { guestAuthLinks, guestLinks, isActive, memberLinks } from "./navItems";
 
 /** Bottom tab bar for screens below xl, where the sidebars are hidden. */
@@ -29,7 +30,7 @@ const MobileNav = () => {
 
   const items = user
     ? memberLinks(user?.user?.account_id).filter((l) =>
-        ["Home", "Explore", "Search", "Friends", "Profile"].includes(l.label)
+        ["Home", "Explore", "Messages", "Friends", "Profile"].includes(l.label)
       )
     : [...guestLinks.slice(0, 3), guestAuthLinks[0]];
 
@@ -52,7 +53,12 @@ const MobileNav = () => {
                     : "text-[var(--color-subtitle)] hover:text-[var(--title-color)]"
                 }`}
               >
-                <Icon className="h-5 w-5" />
+                <span className="relative">
+                  <Icon className="h-5 w-5" />
+                  {user && to === "/messages" && (
+                    <UnreadBadge className="absolute -right-2.5 -top-1.5" />
+                  )}
+                </span>
                 {label}
               </Link>
             </li>

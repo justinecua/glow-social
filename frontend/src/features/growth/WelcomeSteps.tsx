@@ -81,7 +81,7 @@ const WelcomeSteps = ({
     {
       done: data.steps.post,
       title: "Share your first post",
-      text: "Say hi or answer today's prompt.",
+      text: "Say hi to everyone.",
       action: (
         <button type="button" onClick={onCreatePost} className="cursor-pointer">
           Write a post

@@ -2,7 +2,7 @@ import { api } from "./auth/token";
 
 const timeout = 60000;
 
-// Pass the Glow, invites, onboarding, daily prompts and single posts.
+// Pass the Glow, invites, onboarding and single posts.
 export const growthApi = api
   .enhanceEndpoints({ addTagTypes: ["GlowWall", "GlowStatus", "Onboarding"] })
   .injectEndpoints({
@@ -48,9 +48,6 @@ export const growthApi = api
         query: () => ({ url: "accounts/onboarding/", timeout }),
         providesTags: ["Onboarding"],
       }),
-      getTodayPrompt: builder.query<any, void>({
-        query: () => ({ url: "posts/prompt/today/", timeout }),
-      }),
       getPost: builder.query<any, { post_id: number | string }>({
         query: ({ post_id }) => ({ url: `posts/post/${post_id}/`, timeout }),
       }),
@@ -66,6 +63,5 @@ export const {
   useGetInviteInfoQuery,
   useGetMyInvitesQuery,
   useGetOnboardingQuery,
-  useGetTodayPromptQuery,
   useGetPostQuery,
 } = growthApi;

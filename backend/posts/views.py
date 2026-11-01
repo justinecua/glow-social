@@ -15,7 +15,7 @@ from posts.services.external_feeds import (
     getRandomAnimeImage
 )
 
-from .discover import explore, feed, posts_by_tag, posts_by_user, search, single_post, today_prompt
+from .discover import explore, feed, posts_by_tag, posts_by_user, search, single_post
 from .visibility import audience_id, can_view_post, viewer_account_id
 from accounts.auth_utils import account_id_for_user
 from .queries import (
@@ -74,6 +74,60 @@ class CreatePost(APIView):
         if isinstance(data, dict) and data.get("id"):
             data["audience"] = audience_key
         return Response(data)
+
+class PostDetail(APIView):
+    """PATCH: edit your own post's caption and/or audience.
+    DELETE: delete your own post (comments, glows, shares and photos go with it)."""
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def _own_post(self, request, post_id):
+        from .models import Post
+        return Post.objects.filter(id=post_id, account_id=current_account_id(request)).first()
+
+    def patch(self, request, post_id):
+        post = self._own_post(request, post_id)
+        if not post:
+            return Response({"detail": "Post not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        fields = []
+        if "caption" in request.data:
+            caption = str(request.data.get("caption") or "").strip()
+            if len(caption) > 800:
+                return Response({"detail": "Posts can be up to 800 characters."}, status=status.HTTP_400_BAD_REQUEST)
+            if not caption and not post.photo_set.exists():
+                return Response({"detail": "A post needs text or a photo."}, status=status.HTTP_400_BAD_REQUEST)
+            post.caption = caption
+            fields.append("caption")
+
+        audience_key = request.data.get("audience")
+        if audience_key is not None:
+            if audience_key not in ("public", "friends", "close_friends", "only_me"):
+                return Response({"detail": "Unknown audience."}, status=status.HTTP_400_BAD_REQUEST)
+            post.audience_id = audience_id(audience_key)
+            fields.append("audience")
+
+        if fields:
+            post.save(update_fields=fields)
+        return Response({"id": post.id, "caption": post.caption, "audience": audience_key or None})
+
+    def delete(self, request, post_id):
+        post = self._own_post(request, post_id)
+        if not post:
+            return Response({"detail": "Post not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Remove uploaded photo files from disk (best effort).
+        import os
+        from django.conf import settings
+        for link in post.photo_set.values_list("link", flat=True):
+            if link and link.startswith(settings.MEDIA_URL):
+                path = os.path.join(settings.MEDIA_ROOT, link[len(settings.MEDIA_URL):].lstrip("/"))
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+        post.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class SendGlow(APIView):
     permission_classes = (permissions.IsAuthenticated,)
@@ -183,12 +237,6 @@ class GetPost(APIView):
             return Response({"detail": "Post not found."}, status=status.HTTP_404_NOT_FOUND)
         return Response(post)
 
-
-class TodayPrompt(APIView):
-    permission_classes = (permissions.AllowAny,)
-
-    def get(self, request):
-        return Response(today_prompt())
 
 
 def share_post_page(request, post_id):

@@ -1,20 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Bell, SquarePlus, type LucideIcon } from "lucide-react";
+import { Bell, PanelLeftClose, PanelLeftOpen, Plus, SquarePlus, type LucideIcon } from "lucide-react";
+import { useSidebars } from "@/components/layout/useSidebars";
 import { ModeToggle } from "@/components/themes/mode-toggle";
 import { useAuthChecking, useStoredUser } from "@/utils/auth";
 import SkeletonLeftNav from "./Skeleton/skeletonLeftNav";
 import CreatePostDialog from "./modal/CreatePostDialog";
 import NotifLeftBar from "./Notifications/NotifLeftBar";
 import NotificationsCount from "./Notifications/NotifCount";
+import UnreadBadge from "@/features/messages/UnreadBadge";
 import {
   guestLinks,
   isActive,
   memberLinks,
 } from "@/components/layout/navItems";
 
-const rowClass = (active: boolean) =>
-  `group flex w-full items-center gap-3 rounded-lg px-2 py-2 text-sm transition-colors cursor-pointer ${
+const rowClass = (active: boolean, collapsed = false) =>
+  `group flex w-full items-center gap-3 rounded-lg py-2 text-sm transition-colors cursor-pointer ${
+    collapsed ? "justify-center px-0" : "px-2"
+  } ${
     active
       ? // Brand-blue tint (works in light and dark) instead of grey
         "bg-[color-mix(in_srgb,var(--button-color-bg)_10%,transparent)] font-semibold text-[var(--button-color-bg)] dark:bg-[color-mix(in_srgb,var(--button-color-bg)_22%,transparent)] dark:text-white"
@@ -47,26 +51,58 @@ const NavLinkRow = ({
   label,
   icon,
   pathname,
+  badge,
+  collapsed = false,
 }: {
   to: string;
   label: string;
   icon: LucideIcon;
   pathname: string;
+  badge?: React.ReactNode;
+  collapsed?: boolean;
 }) => {
   const active = isActive(pathname, to);
   return (
-    <Link to={to} className={rowClass(active)} aria-current={active ? "page" : undefined}>
-      <IconBox icon={icon} active={active} />
-      <span>{label}</span>
+    <Link
+      to={to}
+      className={rowClass(active, collapsed)}
+      aria-current={active ? "page" : undefined}
+      title={collapsed ? label : undefined}
+    >
+      <IconBox icon={icon} active={active}>
+        {badge && <span className="absolute -top-2 -right-2">{badge}</span>}
+      </IconBox>
+      <span className={collapsed ? "sr-only" : ""}>{label}</span>
     </Link>
   );
 };
 
-const Brand = () => (
-  <Link to="/" className="mb-6 flex h-[50px] items-center px-2">
-    <span className="title-font text-xl text-[var(--title-color)]">glow</span>
+const Brand = ({ collapsed = false }: { collapsed?: boolean }) => (
+  <Link
+    to="/"
+    aria-label="Glow home"
+    className={`mb-6 flex h-[50px] items-center ${collapsed ? "justify-center" : "px-2"}`}
+  >
+    <span className="title-font text-xl text-[var(--title-color)]">{collapsed ? "g" : "glow"}</span>
   </Link>
 );
+
+/** Collapse / expand the sidebar to an icon rail. */
+const CollapseButton = ({ collapsed, onClick }: { collapsed: boolean; onClick: () => void }) => {
+  const Icon = collapsed ? PanelLeftOpen : PanelLeftClose;
+  const label = collapsed ? "Expand sidebar" : "Collapse sidebar";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border text-[var(--color-subtitle)] transition-colors hover:bg-[var(--button-hover-bg-color)] hover:text-[var(--title-color)]"
+    >
+      <Icon className="h-[1.1rem] w-[1.1rem]" />
+    </button>
+  );
+};
 
 const LeftNav = () => {
   const user = useStoredUser() as any;
@@ -90,9 +126,20 @@ const LeftNav = () => {
   }, [showNotifications]);
 
   const checking = useAuthChecking();
+  const { leftCollapsed: collapsed, toggleLeft } = useSidebars();
 
-  const shell =
-    "Left fixed flex h-full w-xs flex-col justify-between overflow-y-auto bg-[var(--home-card)] p-7";
+  const shell = `Left fixed flex h-full flex-col justify-between overflow-y-auto overflow-x-hidden bg-[var(--home-card)] transition-[width,padding] duration-200 ${
+    collapsed ? "w-20 px-3 py-7" : "w-xs p-7"
+  }`;
+  const footer = (
+    <div className={`flex gap-2 ${collapsed ? "flex-col items-center" : "items-center px-2"}`}>
+      {/* ModeToggle is full-width with a right margin; keep it icon-sized here */}
+      <div className="w-9 shrink-0 [&_button]:mr-0">
+        <ModeToggle />
+      </div>
+      <CollapseButton collapsed={collapsed} onClick={toggleLeft} />
+    </div>
+  );
 
   if (checking) return <SkeletonLeftNav />;
 
@@ -100,16 +147,14 @@ const LeftNav = () => {
     return (
       <nav className={shell} aria-label="Main">
         <div>
-          <Brand />
+          <Brand collapsed={collapsed} />
           <div className="flex flex-col gap-1">
             {guestLinks.map((l) => (
-              <NavLinkRow key={l.to} {...l} pathname={pathname} />
+              <NavLinkRow key={l.to} {...l} pathname={pathname} collapsed={collapsed} />
             ))}
           </div>
         </div>
-        <div className="px-2">
-          <ModeToggle />
-        </div>
+        {footer}
       </nav>
     );
   }
@@ -118,7 +163,7 @@ const LeftNav = () => {
   // Navigation only; profile, settings, invite and logout live in the
   // right sidebar.
   const links = memberLinks(accountId).filter((l) =>
-    ["Home", "Explore", "Search", "Friends"].includes(l.label)
+    ["Home", "Explore", "Search", "Messages", "Friends"].includes(l.label)
   );
 
   return (
@@ -126,46 +171,62 @@ const LeftNav = () => {
       <CreatePostDialog ref={dialogRef} />
       <nav className={shell} aria-label="Main">
         <div>
-          <Brand />
+          <Brand collapsed={collapsed} />
           <div className="flex flex-col gap-1">
             {links.slice(0, 3).map((l) => (
-              <NavLinkRow key={l.to} {...l} pathname={pathname} />
+              <NavLinkRow key={l.to} {...l} pathname={pathname} collapsed={collapsed} />
             ))}
 
             <button
               type="button"
               onClick={() => setShowNotifications((prev) => !prev)}
-              className={rowClass(showNotifications)}
+              className={rowClass(showNotifications, collapsed)}
               aria-expanded={showNotifications}
+              aria-label="Notifications"
+              title={collapsed ? "Notifications" : undefined}
             >
               <IconBox icon={Bell} active={showNotifications}>
                 <span className="absolute -top-2 -right-2">
                   <NotificationsCount />
                 </span>
               </IconBox>
-              <span>Notifications</span>
+              <span className={collapsed ? "sr-only" : ""}>Notifications</span>
             </button>
 
             {links.slice(3).map((l) => (
-              <NavLinkRow key={l.to} {...l} pathname={pathname} />
+              <NavLinkRow
+                key={l.to}
+                {...l}
+                pathname={pathname}
+                collapsed={collapsed}
+                badge={l.to === "/messages" ? <UnreadBadge /> : undefined}
+              />
             ))}
           </div>
 
           <button
             type="button"
             onClick={() => dialogRef.current?.open()}
-            className="mt-6 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-[var(--button-color-bg)] py-3 text-sm font-semibold text-white shadow-[0_4px_14px_color-mix(in_srgb,var(--button-color-bg)_35%,transparent)] transition-opacity hover:opacity-90"
+            aria-label="Create post"
+            title={collapsed ? "Create post" : undefined}
+            className={`mt-6 flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-[var(--button-color-bg)] text-sm font-semibold text-white shadow-[0_4px_14px_color-mix(in_srgb,var(--button-color-bg)_35%,transparent)] transition-opacity hover:opacity-90 ${
+              collapsed ? "mx-auto h-11 w-11" : "w-full py-3"
+            }`}
           >
-            <SquarePlus className="h-4 w-4" />
-            Create post
+            {collapsed ? <Plus className="h-5 w-5" /> : <SquarePlus className="h-4 w-4" />}
+            {!collapsed && "Create post"}
           </button>
         </div>
 
-        <div className="px-2">
-          <ModeToggle />
-        </div>
+        {footer}
       </nav>
-      {showNotifications && <NotifLeftBar ref={notificationRef} />}
+      {showNotifications && (
+        <NotifLeftBar
+          ref={notificationRef}
+          leftOffset={collapsed ? "6rem" : "21rem"}
+          onNavigate={() => setShowNotifications(false)}
+        />
+      )}
     </>
   );
 };

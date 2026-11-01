@@ -1,11 +1,10 @@
 // src/components/CreatePostDialog.jsx
-import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { lazy, Suspense } from "react";
 
 // Loaded on demand; emoji-picker-react is a large dependency.
 const EmojiPicker = lazy(() => import("emoji-picker-react"));
-import { SmilePlus, Image, Check, ChevronDown } from "lucide-react";
+import { SmilePlus, Image, Check, ChevronDown, Loader2, X } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { AUDIENCES, audienceInfo, type AudienceKey } from "@/features/growth/audience";
 import {
@@ -26,8 +25,6 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [images, setImages] = useState([]);
-  // Set when opened from a daily prompt: shown above the box, tag added to the post
-  const [prompt, setPrompt] = useState<{ text: string; tag: string } | null>(null);
   // Who can see the post; remembers your last choice on this device.
   const [audience, setAudience] = useState<AudienceKey>(() => {
     try {
@@ -77,7 +74,7 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
         audience,
         caption: text,
         photos: base64Images,
-        taglist: prompt?.tag ? [prompt.tag] : [],
+        taglist: [],
       };
 
       const response = await createPost(payload).unwrap();
@@ -85,7 +82,6 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
 
       setText("");
       setImages([]);
-      setPrompt(null);
       setOpen(false);
       onPostCreated?.(response);
       // Let the feed know, whichever Create button was used.
@@ -98,12 +94,19 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
   };
 
   useImperativeHandle(ref, () => ({
-    open: (opts?: { prompt?: { text: string; tag: string } }) => {
-      setPrompt(opts?.prompt ?? null);
-      setOpen(true);
-    },
+    open: () => setOpen(true),
     close: () => setOpen(false),
   }));
+
+  // One object URL per selected image. Each effect run creates its own URLs
+  // and its cleanup revokes exactly those (safe under React StrictMode,
+  // which runs effects twice in development).
+  const [previews, setPreviews] = useState<string[]>([]);
+  useEffect(() => {
+    const urls = images.map((f: File) => URL.createObjectURL(f));
+    setPreviews(urls);
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [images]);
 
   const handleEmojiClick = (emojiData) => {
     const emoji = emojiData.emoji;
@@ -140,118 +143,118 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
     };
   }, [showEmojiPicker]);
 
+  const MAX = 800; // matches the server's caption limit
+  const canPost = (text.trim().length > 0 || images.length > 0) && text.length <= MAX && !isLoading;
+  const toolBtn =
+    "flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-[var(--button-color-bg)] transition-colors hover:bg-[color-mix(in_srgb,var(--button-color-bg)_12%,transparent)] dark:text-white dark:hover:bg-[var(--button-hover-bg-color)]";
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent
-        className="w-[95%] sm:w-[500px] max-w-[95vw]"
-        onOpenAutoFocus={(e) => e.preventDefault()}
+        className="flex max-h-[90dvh] w-[95%] max-w-[95vw] flex-col gap-0 rounded-2xl bg-[var(--home-card)] p-0 sm:w-[560px] sm:max-w-[560px]"
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          textareaRef.current?.focus();
+        }}
       >
-        <h2 className="text-lg font-bold border-b p-2">Create Post</h2>
-        {prompt && (
-          <div className="flex items-start justify-between gap-2 rounded-lg bg-[color-mix(in_srgb,var(--button-color-bg)_10%,transparent)] px-3 py-2 text-sm dark:bg-[color-mix(in_srgb,var(--button-color-bg)_22%,transparent)]">
-            <span>
-              <span className="font-semibold">Today's prompt:</span> {prompt.text}
-              {prompt.tag && (
-                <span className="ml-1 text-[var(--color-subtitle)]">#{prompt.tag}</span>
-              )}
-            </span>
+        <DialogTitle className="sr-only">New post</DialogTitle>
+
+        {/* Header */}
+        <div className="flex shrink-0 items-center justify-between px-5 pt-4">
+          <span className="text-sm font-semibold text-[var(--color-subtitle)]">New post</span>
+          <DialogClose asChild>
             <button
               type="button"
-              onClick={() => setPrompt(null)}
-              className="cursor-pointer text-xs text-[var(--color-subtitle)] hover:underline"
+              aria-label="Close"
+              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-[var(--color-subtitle)] hover:bg-[var(--button-hover-bg-color)] hover:text-[var(--title-color)]"
             >
-              Remove
+              <X className="h-4 w-4" />
             </button>
+          </DialogClose>
+        </div>
+
+        {/* Composer: avatar + writing area */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-3 pt-3 custom-scrollbar">
+          <div className="flex items-center gap-3">
+            <Avatar
+              src={user?.user?.profile_photo}
+              alt={user?.user?.username ?? ""}
+              className="h-10 w-10"
+            />
+            <p className="min-w-0 truncate text-sm font-semibold">{user?.user?.username}</p>
           </div>
-        )}
-        <div className="flex items-center">
-          <Avatar
-            src={user?.user?.profile_photo}
-            alt={user?.user?.username ?? ""}
-            className="mr-2 h-10 w-10"
-          />
-          <div className="flex flex-col items-start gap-1">
-            <p className="text-sm font-medium">{user?.user?.username}</p>
-            <DropdownMenu.Root modal={false}>
-              <DropdownMenu.Trigger asChild>
-                <button
-                  type="button"
-                  className="flex cursor-pointer items-center gap-1.5 rounded-md bg-[var(--photo-bg)] px-2 py-1 text-xs font-medium hover:bg-[var(--button-hover-bg-color)]"
-                  aria-label={`Audience: ${current.label}`}
-                >
-                  <current.icon className="h-3.5 w-3.5" />
-                  {current.label}
-                  <ChevronDown className="h-3 w-3 opacity-60" />
-                </button>
-              </DropdownMenu.Trigger>
-              {/* Inline (no Portal): it lives inside this dialog */}
-              <DropdownMenu.Content
-                align="start"
-                sideOffset={4}
-                collisionPadding={8}
-                className="z-[300] min-w-[220px] rounded-lg border bg-[var(--home-card)] p-1 shadow-lg"
-              >
-                <DropdownMenu.Label className="px-2.5 py-1.5 text-xs font-semibold text-[var(--color-subtitle)]">
-                  Who can see this?
-                </DropdownMenu.Label>
-                {AUDIENCES.map((a) => (
-                  <DropdownMenu.Item
-                    key={a.key}
-                    onSelect={() => chooseAudience(a.key)}
-                    className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 outline-none data-[highlighted]:bg-[var(--button-hover-bg-color)]"
+          <div>
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canPost) {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+              }}
+              placeholder="What's glowing today?"
+              aria-label="Post text"
+              rows={previews.length ? 2 : 4}
+              className={`mt-3 w-full ${previews.length ? "min-h-16" : "min-h-44"} resize-none border-none bg-transparent text-[15px] leading-relaxed text-foreground shadow-none outline-none placeholder:text-[var(--color-subtitle)] [overflow-wrap:anywhere]`}
+            />
+
+            {previews.length > 0 && (
+              <div className={`mt-2 grid gap-2 ${previews.length === 1 ? "grid-cols-1" : previews.length === 2 || previews.length === 4 ? "grid-cols-2" : "grid-cols-3"}`}>
+                {previews.map((src, index) => (
+                  <div
+                    key={src}
+                    className={`group/img relative overflow-hidden rounded-xl bg-[var(--photo-bg)] ${
+                      previews.length === 1 ? "aspect-[4/3] max-h-72 w-full" : "aspect-square"
+                    }`}
                   >
-                    <a.icon className="h-4 w-4 shrink-0" />
-                    <span className="flex-1">
-                      <span className="block text-sm">{a.label}</span>
-                      <span className="block text-xs text-[var(--color-subtitle)]">
-                        {a.description}
-                      </span>
-                    </span>
-                    {a.key === audience && <Check className="h-4 w-4 text-[var(--button-color-bg)]" />}
-                  </DropdownMenu.Item>
+                    <img src={src} alt="" className="h-full w-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setImages((prev) => prev.filter((_, i) => i !== index))}
+                      aria-label="Remove photo"
+                      className="absolute right-2 top-2 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm hover:bg-black/80"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                 ))}
-              </DropdownMenu.Content>
-            </DropdownMenu.Root>
+              </div>
+            )}
           </div>
         </div>
 
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={`What do you have in mind today, ${user?.user?.username}?`}
-          className="w-full h-36 resize-none bg-transparent border-none outline-none focus:outline-none shadow-none rounded-md text-white placeholder:text-gray-400"
-        />
+        {/* Toolbar */}
+        <div className="relative flex shrink-0 items-center gap-1 border-t px-3 py-2.5">
+          <label className={toolBtn} title="Add photos" aria-label="Add photos">
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                setImages((prev) => [...prev, ...files]);
+                e.target.value = "";
+              }}
+            />
+            <Image className="h-5 w-5" />
+          </label>
 
-        {images.length > 0 && (
-          <div className="flex gap-3 mt-2 overflow-x-auto pb-2">
-            {images.map((img, index) => (
-              <div
-                key={index}
-                className="relative min-w-[6rem] h-24 flex-shrink-0"
-              >
-                <img
-                  src={URL.createObjectURL(img)}
-                  alt=""
-                  className="object-cover w-full h-full rounded-md"
-                />
-                <button
-                  onClick={() =>
-                    setImages((prev) => prev.filter((_, i) => i !== index))
-                  }
-                  className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center hover:bg-red-600"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="flex flex-wrap justify-between items-center mt-3 gap-2 relative">
           <div ref={emojiPickerRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setShowEmojiPicker((prev) => !prev)}
+              className={toolBtn}
+              title="Emoji"
+              aria-label="Emoji"
+              aria-expanded={showEmojiPicker}
+            >
+              <SmilePlus className="h-5 w-5" />
+            </button>
             {showEmojiPicker && (
-              <div className="absolute bottom-full left-0 sm:left-70 mb-8 z-5">
+              <div className="absolute bottom-full left-0 z-50 mb-2">
                 <Suspense fallback={null}>
                   <EmojiPicker
                     onEmojiClick={handleEmojiClick}
@@ -262,40 +265,64 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
             )}
           </div>
 
-          <div className="flex gap-2 justify-end flex-wrap sm:flex-nowrap w-full sm:w-auto">
-            <Button
-              asChild
-              className="cursor-pointer hover:bg-[var(--button-hover-bg-color)] p-4 bg-[var(--home-card)] text-[var(--button-text-color)] w-full sm:w-[38%] rounded-md"
+          <DropdownMenu.Root modal={false}>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                className="ml-1 flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium hover:bg-[var(--button-hover-bg-color)]"
+                aria-label={`Audience: ${current.label}`}
+              >
+                <current.icon className="h-3.5 w-3.5" />
+                {current.label}
+                <ChevronDown className="h-3 w-3 opacity-60" />
+              </button>
+            </DropdownMenu.Trigger>
+            {/* Inline (no Portal): it lives inside this dialog */}
+            <DropdownMenu.Content
+              align="start"
+              side="top"
+              sideOffset={6}
+              collisionPadding={8}
+              className="z-[300] min-w-[220px] rounded-lg border bg-[var(--home-card)] p-1 shadow-lg"
             >
-              <label className="flex items-center text-sm cursor-pointer">
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files);
-                    setImages((prev) => [...prev, ...files]);
-                  }}
-                />
-                <Image className="mr-1" /> Image
-              </label>
-            </Button>
+              <DropdownMenu.Label className="px-2.5 py-1.5 text-xs font-semibold text-[var(--color-subtitle)]">
+                Who can see this?
+              </DropdownMenu.Label>
+              {AUDIENCES.map((a) => (
+                <DropdownMenu.Item
+                  key={a.key}
+                  onSelect={() => chooseAudience(a.key)}
+                  className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 outline-none data-[highlighted]:bg-[var(--button-hover-bg-color)]"
+                >
+                  <a.icon className="h-4 w-4 shrink-0" />
+                  <span className="flex-1">
+                    <span className="block text-sm">{a.label}</span>
+                    <span className="block text-xs text-[var(--color-subtitle)]">{a.description}</span>
+                  </span>
+                  {a.key === audience && <Check className="h-4 w-4 text-[var(--button-color-bg)]" />}
+                </DropdownMenu.Item>
+              ))}
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
 
-            <Button
-              className="cursor-pointer hover:bg-[var(--button-hover-bg-color)] p-4 bg-[var(--home-card)] text-[var(--button-text-color)] w-full sm:w-[38%] rounded-md flex items-center"
-              onClick={() => setShowEmojiPicker((prev) => !prev)}
-            >
-              <SmilePlus className="mr-1" /> Emoji
-            </Button>
-
-            <Button
+          <div className="ml-auto flex items-center gap-3">
+            {text.length > MAX - 100 && (
+              <span
+                className={`text-xs tabular-nums ${text.length > MAX ? "font-semibold text-red-500" : "text-[var(--color-subtitle)]"}`}
+              >
+                {MAX - text.length}
+              </span>
+            )}
+            <button
+              type="button"
               onClick={handleSubmit}
-              disabled={isLoading}
-              className="cursor-pointer hover:bg-[var(--button-hover-bg-color)] p-4 bg-[var(--home-card)] text-[var(--button-text-color)] w-full sm:w-[50%] rounded-md flex items-center"
+              disabled={!canPost}
+              title="Share (⌘/Ctrl + Enter)"
+              className="flex h-9 cursor-pointer items-center gap-2 rounded-full bg-[var(--button-color-bg)] px-5 text-sm font-semibold text-white shadow-[0_4px_14px_color-mix(in_srgb,var(--button-color-bg)_35%,transparent)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
             >
-              {isLoading ? "Posting..." : "Post"}
-            </Button>
+              {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isLoading ? "Sharing" : "Share"}
+            </button>
           </div>
         </div>
       </DialogContent>

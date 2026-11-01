@@ -2,32 +2,36 @@ import { api } from "../auth/token";
 
 const timeout = 60000;
 
-export const receivedApi = api.injectEndpoints({
-  endpoints: (builder) => ({
-    getNotificationsByUser: builder.query({
-      query: ({ account_id }) => ({
-        url: `/notifications/showNotificationsByUser/${account_id}`,
-        method: "GET",
-        withCredentials: true,
-        timeout,
+export const receivedApi = api
+  .enhanceEndpoints({ addTagTypes: ["Notifications"] })
+  .injectEndpoints({
+    endpoints: (builder) => ({
+      getNotificationsByUser: builder.query({
+        query: ({ account_id }) => ({
+          url: `/notifications/showNotificationsByUser/${account_id}/`,
+          method: "GET",
+          timeout,
+        }),
+        providesTags: ["Notifications"],
       }),
-      transformResponse: (response) => response,
-      transformErrorResponse: (response) => response,
-    }),
-    getCountNotificationsByUser: builder.query({
-      query: ({ account_id }) => ({
-        url: `/notifications/countNotifications/${account_id}`,
-        method: "GET",
-        withCredentials: true,
-        timeout,
+      getCountNotificationsByUser: builder.query({
+        // Unread notifications only
+        query: ({ account_id }) => ({
+          url: `/notifications/countNotifications/${account_id}/`,
+          method: "GET",
+          timeout,
+        }),
+        providesTags: ["Notifications"],
       }),
-      transformResponse: (response) => response,
-      transformErrorResponse: (response) => response,
+      markAllNotificationsRead: builder.mutation<{ marked: number }, void>({
+        query: () => ({ url: `/notifications/markAllRead/`, method: "POST", timeout }),
+        invalidatesTags: ["Notifications"],
+      }),
     }),
-  }),
-});
+  });
 
 export const {
   useGetNotificationsByUserQuery,
   useGetCountNotificationsByUserQuery,
+  useMarkAllNotificationsReadMutation,
 } = receivedApi;

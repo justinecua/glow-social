@@ -2,12 +2,13 @@ import { useState } from "react";
 import NoProfile from "../../../../assets/images/No-Profile.jpg";
 import { Link } from "react-router-dom";
 import { audienceInfo } from "@/features/growth/audience";
+import PostMenu from "@/features/posts/PostMenu";
 
 const PostTopNav = ({ post }) => {
   const [imgError, setImgError] = useState(false);
 
   return (
-    <div className="flex items-center ">
+    <div className="flex w-full min-w-0 items-center">
       <Link
         to={`/profile/${post?.account_id}`}
         className="flex items-center mr-2"
@@ -38,6 +39,7 @@ const PostTopNav = ({ post }) => {
           </span>
         );
       })()}
+      <PostMenu post={post} />
     </div>
   );
 };

@@ -3,8 +3,8 @@ import { CheckCircle2, Compass } from "lucide-react";
 import { useGetExploreQuery } from "@/redux/services/discover";
 import { Avatar } from "@/features/discover/components/PersonRow";
 
-/** Divider between new posts and older ones. */
-const CaughtUpCard = ({ hadNewPosts }: { hadNewPosts: boolean }) => {
+/** End-of-feed card: you have seen every post. */
+const CaughtUpCard = () => {
   const { data } = useGetExploreQuery(undefined);
   const people = (data?.people ?? []).slice(0, 5);
 
@@ -12,12 +12,10 @@ const CaughtUpCard = ({ hadNewPosts }: { hadNewPosts: boolean }) => {
     <section className="my-4 rounded-xl border border-dashed bg-[var(--home-card)] p-5 text-center">
       <CheckCircle2 className="mx-auto h-8 w-8 text-[var(--button-color-bg)]" />
       <h2 className="mt-2 font-semibold">
-        {hadNewPosts ? "You're all caught up" : "No new posts this week"}
+        You're all caught up
       </h2>
       <p className="mt-1 text-sm text-[var(--color-subtitle)]">
-        {hadNewPosts
-          ? "You've seen everything new from the past week."
-          : "Invite friends or discover new people to fill your feed."}
+        You've seen every post. Find more people to follow on Explore.
       </p>
 
       {people.length > 0 && (
@@ -40,7 +38,6 @@ const CaughtUpCard = ({ hadNewPosts }: { hadNewPosts: boolean }) => {
       >
         <Compass className="h-4 w-4" /> Discover on Explore
       </Link>
-      <p className="mt-4 text-xs text-[var(--color-subtitle)]">Older posts below</p>
     </section>
   );
 };

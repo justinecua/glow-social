@@ -42,6 +42,7 @@ def export_user_data(user):
         "friends": [],
         "notifications": [],
         "close_friends": [],
+        "messages_sent": [],
         "glows_sent": [],
         "glows_received": [],
     }
@@ -107,6 +108,13 @@ def export_user_data(user):
 
     from kudos.models import GlowNote
     from friends.models import CloseFriend
+
+    from messaging.models import Message
+
+    data["messages_sent"] = [
+        {"conversation_id": m.conversation_id, "body": m.body, "created_at": _iso(m.created_at)}
+        for m in Message.objects.filter(sender=account, is_deleted=False).order_by("created_at")
+    ]
 
     data["close_friends"] = list(
         CloseFriend.objects.filter(owner=account)

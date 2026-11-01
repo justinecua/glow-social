@@ -25,6 +25,9 @@ import SearchPage from "./features/discover/pages/Search";
 import FriendsPage from "./features/discover/pages/Friends";
 import InvitePage from "./features/growth/InvitePage";
 import PostPage from "./features/growth/PostPage";
+import MessagesPage from "./features/messages/MessagesPage";
+import ChatRealtime from "./features/messages/ChatRealtime";
+import NotificationsRealtime from "./features/dashboard/components/Notifications/NotificationsRealtime";
 
 function App() {
   const dispatch = useDispatch();
@@ -56,11 +59,15 @@ function App() {
             <Route path="/friends" element={<FriendsPage />} />
             <Route path="/invite/:username" element={<InvitePage />} />
             <Route path="/post/:id" element={<PostPage />} />
+            <Route path="/messages" element={<MessagesPage />} />
+            <Route path="/messages/:id" element={<MessagesPage />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/guidelines" element={<Guidelines />} />
           </Routes>
 
+          <ChatRealtime />
+          <NotificationsRealtime />
           <Toaster position="bottom-right" />
         </RootLayout>
       </WebSocketProvider>

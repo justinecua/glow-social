@@ -42,6 +42,15 @@ class GlobalConsumer(AsyncWebsocketConsumer):
     async def receive(self, text_data):
         try:
             data = json.loads(text_data)
+        except (ValueError, TypeError):
+            return
+
+        # Typing indicator: only members of the conversation may signal it.
+        if data.get("type") == "typing":
+            await self.relay_typing(data.get("conversation_id"))
+            return
+
+        try:
             friend_id = int(data.get("friend_id"))
         except (ValueError, TypeError):
             return
@@ -113,3 +122,36 @@ class GlobalConsumer(AsyncWebsocketConsumer):
             "count": event["count"],
             "notifications": event["notifications"]
         }))
+
+    # ------------------------------------------------------------ messaging
+    async def relay_typing(self, conversation_id):
+        from messaging.services import can_type_in, _member_ids
+
+        try:
+            conversation_id = int(conversation_id)
+        except (TypeError, ValueError):
+            return
+        if not await sync_to_async(can_type_in)(conversation_id, self.user_id):
+            return
+        for uid in await sync_to_async(_member_ids)(conversation_id):
+            if uid != self.user_id:
+                await self.channel_layer.group_send(
+                    f"user_{uid}",
+                    {"type": "chat_typing", "conversation_id": conversation_id,
+                     "account_id": self.user_id},
+                )
+
+    async def chat_message(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def chat_message_updated(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def chat_read(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def chat_typing(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def chat_conversation(self, event):
+        await self.send(text_data=json.dumps(event))
