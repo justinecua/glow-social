@@ -8,6 +8,7 @@ from django.core.cache import cache
 from django.db import connections
 
 from .queries import time_ago
+from .visibility import audience_ids, visible_sql
 
 EXPLORE_CACHE_SECONDS = 120
 
@@ -25,8 +26,10 @@ POST_SELECT = """
         COUNT(DISTINCT glows.id) AS glow_count,
         COUNT(DISTINCT comments.id) AS comment_count,
         ARRAY_AGG(DISTINCT ph.link) AS photos,
-        ARRAY_AGG(DISTINCT glows.account_id) AS glowers
+        ARRAY_AGG(DISTINCT glows.account_id) AS glowers,
+        COALESCE(aud.key, 'public') AS audience
     FROM glow.glow.posts_post AS p
+    LEFT JOIN glow.glow.posts_audience AS aud ON aud.id = p.audience_id
     LEFT JOIN glow.glow.accounts_account AS a ON p.account_id = a.id
     LEFT JOIN glow.glow.auth_user AS u ON a.auth_user_id = u.id
     LEFT JOIN glow.glow.posts_photo AS ph ON p.id = ph.post_id
@@ -35,7 +38,7 @@ POST_SELECT = """
 """
 POST_GROUP = """
     GROUP BY p.id, p.account_id, p.caption, p."dateTime",
-             u.username, a.firstname, a.lastname, a.profile_photo
+             u.username, a.firstname, a.lastname, a.profile_photo, aud.key
 """
 
 
@@ -59,10 +62,15 @@ def _clean_posts(rows, request):
     return rows
 
 
-def _posts(where="", params=(), order='p."dateTime" DESC', limit=12, having="", request=None):
+def _posts(where="", params=(), order='p."dateTime" DESC', limit=12, having="",
+           request=None, viewer_id=None):
+    """Posts matching `where`, limited to what `viewer_id` may see. With no
+    viewer (Explore, search, share previews) only public posts are returned."""
+    vis, vis_params = visible_sql(viewer_id)
+    where = f"{where} AND {vis}" if where else f"WHERE {vis}"
     sql = f"{POST_SELECT} {where} {POST_GROUP} {having} ORDER BY {order} LIMIT %s"
     with connections["default"].cursor() as cursor:
-        cursor.execute(sql, (*params, limit))
+        cursor.execute(sql, (*params, *vis_params, limit))
         return _clean_posts(_rows(cursor), request)
 
 
@@ -84,11 +92,11 @@ def _photos(request, limit=18):
             SELECT ph.link, ph.post_id
             FROM glow.glow.posts_photo ph
             JOIN glow.glow.posts_post p ON p.id = ph.post_id
-            WHERE ph.link <> ''
+            WHERE ph.link <> '' AND (p.audience_id IS NULL OR p.audience_id = %s)
             ORDER BY p."dateTime" DESC, ph.id DESC
             LIMIT %s
             """,
-            (limit,),
+            (audience_ids().get("public"), limit),
         )
         return [
             {"url": request.build_absolute_uri(link) if request else link, "post_id": post_id}
@@ -106,12 +114,14 @@ def _tags(limit=8):
             SELECT MIN(t.tag) AS tag, COUNT(DISTINCT tp.post_id) AS posts
             FROM glow.glow.posts_tag t
             JOIN glow.glow.posts_tag_post tp ON tp.tag_id = t.id
+            JOIN glow.glow.posts_post p ON p.id = tp.post_id
             WHERE t.tag ~ '^[A-Za-z0-9_]{2,30}$'
+              AND (p.audience_id IS NULL OR p.audience_id = %s)
             GROUP BY LOWER(t.tag)
             ORDER BY posts DESC, LOWER(t.tag)
             LIMIT %s
             """,
-            (limit,),
+            (audience_ids().get("public"), limit),
         )
         return [{"tag": tag, "posts": n} for tag, n in cursor.fetchall()]
 
@@ -145,7 +155,7 @@ def _active_people(limit=8, days=60):
 
 
 def explore(request):
-    key = f"explore:v2:{request.get_host()}"
+    key = f"explore:v3:{request.get_host()}"
     data = cache.get(key)
     if data is None:
         data = {
@@ -236,21 +246,23 @@ def feed(request, viewer_id=None, offset=0, limit=7):
         ((p.account_id = ANY(%s) AND p."dateTime" >= %s) OR p."dateTime" >= %s) AS is_fresh,""",
         1,
     )
+    vis, vis_params = visible_sql(viewer_id)
     sql = f"""
-        {select} {POST_GROUP}
+        {select} WHERE {vis} {POST_GROUP}
         ORDER BY from_friends DESC, is_fresh DESC, p."dateTime" DESC, p.id DESC
         OFFSET %s LIMIT %s
     """
     with connections["default"].cursor() as cursor:
         cursor.execute(
             sql,
-            (circle, friend_since, circle, friend_since, fresh_since, offset, limit),
+            (circle, friend_since, circle, friend_since, fresh_since,
+             *vis_params, offset, limit),
         )
         return {"results": _clean_posts(_rows(cursor), request)}
 
 
-def single_post(post_id, request):
-    posts = _posts("WHERE p.id = %s", (post_id,), limit=1, request=request)
+def single_post(post_id, request, viewer_id=None):
+    posts = _posts("WHERE p.id = %s", (post_id,), limit=1, request=request, viewer_id=viewer_id)
     return posts[0] if posts else None
 
 
@@ -290,3 +302,9 @@ def today_prompt():
 
     text, tag = DEFAULT_PROMPTS[today.toordinal() % len(DEFAULT_PROMPTS)]
     return {"text": text, "tag": tag, "date": today.isoformat()}
+
+
+def posts_by_user(account_id, request, viewer_id=None, limit=500):
+    """A profile's posts, limited to what the viewer may see."""
+    return _posts("WHERE p.account_id = %s", (account_id,), limit=limit,
+                  request=request, viewer_id=viewer_id)

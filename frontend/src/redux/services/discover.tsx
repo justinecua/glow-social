@@ -26,6 +26,27 @@ export const discoverApi = api.injectEndpoints({
     getMyFriends: builder.query({
       query: () => ({ url: "friends/mine/", method: "GET", timeout }),
     }),
+    // Add/remove someone on your Close Friends list (optimistic).
+    setCloseFriend: builder.mutation({
+      query: ({ account_id, close }: { account_id: number; close: boolean }) => ({
+        url: `friends/closeFriends/${account_id}/`,
+        method: close ? "POST" : "DELETE",
+        timeout,
+      }),
+      async onQueryStarted({ account_id, close }, { dispatch, queryFulfilled }) {
+        const patch = dispatch(
+          (discoverApi.util.updateQueryData as any)("getMyFriends", undefined, (draft: any) => {
+            const f = draft?.friends?.find((x: any) => x.id === account_id);
+            if (f) f.is_close = close;
+          })
+        );
+        try {
+          await queryFulfilled;
+        } catch {
+          patch.undo();
+        }
+      },
+    }),
   }),
 });
 
@@ -34,4 +55,5 @@ export const {
   useGetPostsByTagQuery,
   useSearchQuery,
   useGetMyFriendsQuery,
+  useSetCloseFriendMutation,
 } = discoverApi;

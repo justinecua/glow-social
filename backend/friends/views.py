@@ -32,3 +32,33 @@ class MyFriends(APIView):
 
     def get(self, request):
         return Response(myFriends(current_account_id(request)))
+
+
+class CloseFriendToggle(APIView):
+    """POST adds a friend to your Close Friends list, DELETE removes them."""
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request, account_id):
+        from django.db.models import Q
+        from .models import CloseFriend, Friend
+
+        me = current_account_id(request)
+        are_friends = Friend.objects.filter(
+            Q(user_id=me, friend_id=account_id) | Q(user_id=account_id, friend_id=me),
+            status="Friends",
+        ).exists()
+        if not are_friends:
+            return Response(
+                {"detail": "You can only add friends to Close Friends."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        CloseFriend.objects.get_or_create(owner_id=me, friend_id=account_id)
+        return Response({"id": int(account_id), "is_close": True})
+
+    def delete(self, request, account_id):
+        from .models import CloseFriend
+
+        CloseFriend.objects.filter(
+            owner_id=current_account_id(request), friend_id=account_id
+        ).delete()
+        return Response({"id": int(account_id), "is_close": False})

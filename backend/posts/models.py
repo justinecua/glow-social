@@ -2,6 +2,9 @@ from django.db import models
 from accounts.models import Account
 
 class Audience(models.Model):
+    """Who can see a post. `key` is what code uses:
+    public · friends · close_friends · only_me."""
+    key = models.SlugField(max_length=30, unique=True, null=True, blank=True)
     audience = models.CharField(max_length=150, default="")
     description = models.CharField(max_length=255, default="")
     link = models.URLField(verbose_name="File URL", blank=True, default="")
