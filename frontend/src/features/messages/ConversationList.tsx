@@ -31,10 +31,10 @@ const ConversationList = ({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 custom-scrollbar">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 custom-scrollbar">
         {isLoading ? (
           Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="flex items-center gap-3 px-2 py-2.5" aria-hidden>
+            <div key={i} className="flex items-center gap-3 px-3 py-3" aria-hidden>
               <Skeleton className="h-11 w-11 rounded-full" />
               <div className="flex-1 space-y-2">
                 <Skeleton className="h-3.5 w-28" />
@@ -76,7 +76,7 @@ const ConversationList = ({
                 key={c.id}
                 to={`/messages/${c.id}`}
                 aria-current={c.id === activeId ? "page" : undefined}
-                className={`flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors ${
+                className={`flex items-center gap-3 rounded-xl px-3 py-3 transition-colors ${
                   c.id === activeId
                     ? "bg-[color-mix(in_srgb,var(--button-color-bg)_10%,transparent)] dark:bg-[color-mix(in_srgb,var(--button-color-bg)_22%,transparent)]"
                     : "hover:bg-[var(--button-hover-bg-color)]"

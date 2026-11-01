@@ -17,10 +17,12 @@ from .views import (
     Search,
     GetPost,
     PostDetail,
+    LinkPreview,
 )
 
 
 urlpatterns = [
+    path("linkPreview/", LinkPreview.as_view(), name="linkPreview"),
     path("getPosts/", GetPosts.as_view(), name="getPosts"),
     path("explore/", Explore.as_view(), name="explore"),
     path("search/", Search.as_view(), name="search"),

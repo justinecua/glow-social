@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework import status, permissions
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework_simplejwt.tokens import RefreshToken
+from posts.services.link_preview import get_link_preview
 from posts.services.external_feeds import (
     getJokes,
     getUselessFacts,
@@ -288,3 +289,17 @@ def share_post_page(request, post_id):
 <p><a href="{escape(target)}">Open this post on Glow</a></p>
 </body></html>"""
     return HttpResponse(html)
+
+
+class LinkPreview(APIView):
+    """Open Graph card data for a link in a post caption."""
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request):
+        url = (request.query_params.get("url") or "").strip()
+        if not url or len(url) > 2048:
+            return Response({"detail": "url is required"}, status=status.HTTP_400_BAD_REQUEST)
+        data = get_link_preview(url)
+        if not data:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response(data)
