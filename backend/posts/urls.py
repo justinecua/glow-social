@@ -2,6 +2,10 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .views import (
     GetPosts,
+    NewPostsSince,
+    MarkSeen,
+    VotePoll,
+    TodayPrompt,
     GetJokes,
     GetUselessFacts,
     GetAdvice,
@@ -16,16 +20,22 @@ from .views import (
     Explore,
     Search,
     GetPost,
-    TodayPrompt,
+    PostDetail,
+    LinkPreview,
 )
 
 
 urlpatterns = [
+    path("linkPreview/", LinkPreview.as_view(), name="linkPreview"),
     path("getPosts/", GetPosts.as_view(), name="getPosts"),
+    path("new/", NewPostsSince.as_view(), name="newPostsSince"),
+    path("seen/", MarkSeen.as_view(), name="markSeen"),
+    path("<int:post_id>/vote/", VotePoll.as_view(), name="votePoll"),
+    path("prompt/today/", TodayPrompt.as_view(), name="todayPrompt"),
     path("explore/", Explore.as_view(), name="explore"),
     path("search/", Search.as_view(), name="search"),
     path("post/<int:post_id>/", GetPost.as_view(), name="getPost"),
-    path("prompt/today/", TodayPrompt.as_view(), name="todayPrompt"),
+    path("post/<int:post_id>/manage/", PostDetail.as_view(), name="managePost"),
     path("createPost/", CreatePost.as_view(), name="createPost"),
     path("sendGlow/", SendGlow.as_view(), name="sendGlow"),
     path("sendUnglow/", SendUnglow.as_view(), name="sendUnglow"),

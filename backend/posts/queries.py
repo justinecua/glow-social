@@ -1,342 +1,199 @@
-import logging
-from django.db import connections
-from rest_framework.response import Response
-from django.contrib.auth.hashers import make_password
-from django.utils import timezone
 from datetime import datetime
+
 import pytz
-from django.http import JsonResponse
-import os
-from django.conf import settings
-import base64
+from django.contrib.auth.hashers import make_password
+from django.db import transaction
+from django.utils import timezone
+
+from GlowProject.db import execute, fetch_column, fetch_one, fetch_value
+from GlowProject.media import save_image
+
+AUDIENCES = ("public", "friends", "close_friends", "only_me")
+MAX_CAPTION = 800
 
 
-def time_ago(post_datetime):
-    now = datetime.now(pytz.utc)
-    time_diff = now - post_datetime
-
-    if time_diff.total_seconds() < 60:
+def time_ago(when):  # "• 5 mins ago"
+    seconds = (datetime.now(pytz.utc) - when).total_seconds()
+    if seconds < 60:
         return "• Just now"
-    elif time_diff.total_seconds() < 3600:
-        minutes = int(time_diff.total_seconds() / 60)
+    if seconds < 3600:
+        minutes = int(seconds / 60)
         return f"• {minutes} min{'s' if minutes != 1 else ''} ago"
-    elif time_diff.total_seconds() < 86400:
-        hours = int(time_diff.total_seconds() / 3600)
+    if seconds < 86400:
+        hours = int(seconds / 3600)
         return f"• {hours} hr{'s' if hours != 1 else ''} ago"
-    elif time_diff.total_seconds() < 604800:
-        days = int(time_diff.total_seconds() / 86400)
-        return f"• {days}d{'' if days != 1 else ''} ago"
-    elif time_diff.total_seconds() < 2592000:
-        weeks = int(time_diff.total_seconds() / 604800)
+    if seconds < 604800:
+        return f"• {int(seconds / 86400)}d ago"
+    if seconds < 2592000:
+        weeks = int(seconds / 604800)
         return f"• {weeks} wk{'s' if weeks != 1 else ''} ago"
-    elif time_diff.total_seconds() < 31536000:
-        months = int(time_diff.total_seconds() / 2592000)
+    if seconds < 31536000:
+        months = int(seconds / 2592000)
         return f"• {months} mnth{'s' if months != 1 else ''} ago"
-    else:
-        years = int(time_diff.total_seconds() / 31536000)
-        return f"• {years} yr{'s' if years != 1 else ''} ago"
+    years = int(seconds / 31536000)
+    return f"• {years} yr{'s' if years != 1 else ''} ago"
 
 
-def getPosts(offset=0, limit=7, request=None):
-    try:
-        query = f"""
-            SELECT 
-                p.id,
-                p.account_id,
-                p.caption,
-                p."dateTime",
-                u.username,
-                a.firstname,
-                a.lastname,
-                a.profile_photo,
-                COUNT(DISTINCT glows.id) AS glow_count,
-                COUNT(DISTINCT comments.id) AS comment_count,
-                ARRAY_AGG(DISTINCT ph.link) AS photos,
-                ARRAY_AGG(DISTINCT glows.account_id) AS glowers
-            FROM
-                glow.glow.posts_post AS p
-            LEFT JOIN
-                glow.glow.accounts_account AS a ON p.account_id = a.id
-            LEFT JOIN
-                glow.glow.auth_user AS u ON a.auth_user_id = u.id
-            LEFT JOIN
-                glow.glow.posts_photo AS ph ON p.id = ph.post_id
-            LEFT JOIN
-                glow.glow.interactions_glow AS glows ON p.id = glows.post_id
-            LEFT JOIN
-                glow.glow.interactions_comment AS comments ON p.id = comments.post_id
-            GROUP BY 
-                p.id, p.account_id, p.caption, p."dateTime", u.username, a.firstname, a.lastname, a.profile_photo
-            ORDER BY 
-                p."dateTime" DESC
-            OFFSET {offset} LIMIT {limit};
+def insert_post(account_id, audience_id, caption):
+    return fetch_value(
         """
-
-        connection = connections["default"]
-        cursor = connection.cursor()
-        cursor.execute(query)
-
-        results = [
-            dict(
-                (cursor.description[i][0], value if value is not None else "")
-                for i, value in enumerate(row)
-            )
-            for row in cursor.fetchall()
-        ]
-
-        for post in results:
-            if "dateTime" in post and isinstance(post["dateTime"], datetime):
-                post["dateTime"] = time_ago(post["dateTime"])
-            if "photos" in post and isinstance(post["photos"], list):
-                post["photos"] = [
-                    request.build_absolute_uri(photo) if request and photo else photo
-                    for photo in post["photos"]
-                    if photo and isinstance(photo, str) and photo.strip()
-                ]
+        INSERT INTO glow.glow.posts_post (account_id, audience_id, caption, "dateTime")
+        VALUES (%s, %s, %s, %s)
+        RETURNING id
+        """,
+        (account_id, audience_id, caption, timezone.now()),
+    )
 
 
-        return {'results': results}
-
-    except Exception as error:
-        print(f"Error: {error}")
-        return {'results': []}
-    finally:
-        if cursor:
-            cursor.close()
-        if connection:
-            connection.close()
+def tag_id(name):  # creates the tag the first time it's used
+    existing = fetch_value("SELECT id FROM glow.glow.posts_tag WHERE tag = %s LIMIT 1", (name,))
+    if existing:
+        return existing
+    return fetch_value("INSERT INTO glow.glow.posts_tag (tag) VALUES (%s) RETURNING id", (name,))
 
 
-def getPostsByUser(account_id, request=None):
+def add_tags(post_id, names):
+    for name in names:
+        execute(
+            "INSERT INTO glow.glow.posts_tag_post (tag_id, post_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            (tag_id(name), post_id),
+        )
 
-    try:
-        query = f"""
-            SELECT 
-                p.id,
-                p.account_id,
-                p.caption,
-                p."dateTime",
-                u.username,
-                a.firstname,
-                a.lastname,
-                a.profile_photo,
-                COUNT(DISTINCT glows.id) AS glow_count,
-                COUNT(DISTINCT comments.id) AS comment_count,
-                ARRAY_AGG(DISTINCT ph.link) AS photos,
-                ARRAY_AGG(DISTINCT glows.account_id) AS glowers
-            FROM
-                glow.glow.posts_post AS p
-            LEFT JOIN
-                glow.glow.accounts_account AS a ON p.account_id = a.id
-            LEFT JOIN
-                glow.glow.auth_user AS u ON a.auth_user_id = u.id
-            LEFT JOIN
-                glow.glow.posts_photo AS ph ON p.id = ph.post_id
-            LEFT JOIN
-                glow.glow.interactions_glow AS glows ON p.id = glows.post_id
-            LEFT JOIN
-                glow.glow.interactions_comment AS comments ON p.id = comments.post_id
-                            WHERE p.account_id = %s
-            GROUP BY 
-                p.id, p.account_id, p.caption, p."dateTime", u.username, a.firstname, a.lastname, a.profile_photo
-            ORDER BY 
-                p."dateTime" DESC
+
+def add_photo(post_id, link):
+    execute("INSERT INTO glow.glow.posts_photo (link, post_id) VALUES (%s, %s)", (link, post_id))
+
+
+def create_post(account_id, audience_id, caption, photos, tags, request=None):  # `photos` are validated image bytes
+    with transaction.atomic():
+        post_id = insert_post(account_id, audience_id, caption)
+        add_tags(post_id, tags)
+        for image in photos:
+            add_photo(post_id, save_image(image, "photos"))
+
+    author = fetch_one(
         """
+        SELECT u.username, a.firstname, a.lastname, a.profile_photo
+        FROM glow.glow.accounts_account a
+        JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
+        WHERE a.id = %s
+        """,
+        (account_id,),
+    )
+    links = fetch_column("SELECT link FROM glow.glow.posts_photo WHERE post_id = %s ORDER BY id", (post_id,))
+    return {  # same shape as a feed post, so the app can show it right away
+        "id": post_id,
+        "account_id": account_id,
+        "caption": caption,
+        "dateTime": "• Just now",
+        "username": author["username"],
+        "firstname": author["firstname"],
+        "lastname": author["lastname"],
+        "profile_photo": author["profile_photo"],
+        "photos": [request.build_absolute_uri(link) if request else link for link in links],
+        "glow_count": 0,
+        "comment_count": 0,
+        "glowers": [None],
+    }
 
-        connection = connections["default"]
-        cursor = connection.cursor()
-        cursor.execute(query,(account_id,))
 
-        results = [
-            dict(
-                (cursor.description[i][0], value if value is not None else "")
-                for i, value in enumerate(row)
+def glow_post(account_id, post_id):
+    execute(
+        """
+        INSERT INTO glow.glow.interactions_glow (account_id, post_id, "timestamp")
+        VALUES (%s, %s, %s)
+        ON CONFLICT ON CONSTRAINT glow_one_per_account_post DO NOTHING
+        """,  # one glow per person per post, even with double-clicks
+        (account_id, post_id, timezone.now()),
+    )
+    return {"status": "success", "message": "Post glowed successfully"}
+
+
+def unglow_post(account_id, post_id):
+    execute(
+        "DELETE FROM glow.glow.interactions_glow WHERE account_id = %s AND post_id = %s",
+        (account_id, post_id),
+    )
+    return {"status": "success", "message": "Post unglowed successfully"}
+
+
+def find_own_post(post_id, account_id):
+    return fetch_one(
+        """
+        SELECT p.id, p.caption,
+               EXISTS (SELECT 1 FROM glow.glow.posts_photo ph WHERE ph.post_id = p.id) AS has_photos
+        FROM glow.glow.posts_post p
+        WHERE p.id = %s AND p.account_id = %s
+        """,
+        (post_id, account_id),
+    )
+
+
+def update_post(post_id, caption=None, audience_id=None):
+    if caption is not None:
+        execute("UPDATE glow.glow.posts_post SET caption = %s WHERE id = %s", (caption, post_id))
+    if audience_id is not None:
+        execute("UPDATE glow.glow.posts_post SET audience_id = %s WHERE id = %s", (audience_id, post_id))
+
+
+THIS_POSTS_POLL = "(SELECT id FROM glow.glow.posts_poll WHERE post_id = %(p)s)"
+
+DELETE_POST = [  # children before the post; foreign keys don't cascade
+    "UPDATE glow.glow.posts_poll SET correct_option_id = NULL WHERE post_id = %(p)s",
+    f"DELETE FROM glow.glow.posts_pollvote WHERE poll_id IN {THIS_POSTS_POLL}",
+    f"DELETE FROM glow.glow.posts_polloption WHERE poll_id IN {THIS_POSTS_POLL}",
+    "DELETE FROM glow.glow.posts_poll WHERE post_id = %(p)s",
+    """
+    WITH RECURSIVE doomed AS (
+        SELECT id FROM glow.glow.interactions_comment WHERE post_id = %(p)s
+        UNION
+        SELECT c.id FROM glow.glow.interactions_comment c JOIN doomed d ON c.parent_id = d.id
+    )
+    DELETE FROM glow.glow.interactions_comment WHERE id IN (SELECT id FROM doomed)
+    """,
+    "DELETE FROM glow.glow.interactions_glow WHERE post_id = %(p)s",
+    "DELETE FROM glow.glow.interactions_share WHERE post_id = %(p)s",
+    "DELETE FROM glow.glow.posts_postseen WHERE post_id = %(p)s",
+    "DELETE FROM glow.glow.posts_photo WHERE post_id = %(p)s",
+    "DELETE FROM glow.glow.posts_video WHERE post_id = %(p)s",
+    "DELETE FROM glow.glow.posts_tag_post WHERE post_id = %(p)s",
+    "DELETE FROM glow.glow.posts_post WHERE id = %(p)s",
+]
+
+
+def delete_post(post_id):  # returns the photo links so the caller can delete the files
+    links = fetch_column("SELECT link FROM glow.glow.posts_photo WHERE post_id = %s", (post_id,))
+    with transaction.atomic():
+        for sql in DELETE_POST:
+            execute(sql, {"p": post_id})
+    return links
+
+
+def bot_account_id(username, first, last, bio):  # creates the bot the first time; bots can't log in
+    with transaction.atomic():
+        user_id = fetch_value("SELECT id FROM glow.glow.auth_user WHERE username = %s", (username,))
+        if not user_id:
+            user_id = fetch_value(
+                """
+                INSERT INTO glow.glow.auth_user
+                    (username, email, password, date_joined, is_superuser,
+                     first_name, last_name, is_staff, is_active)
+                VALUES (%s, '', %s, %s, false, '', '', false, true)
+                RETURNING id
+                """,
+                (username, make_password(None), timezone.now()),  # make_password(None) = unusable password
             )
-            for row in cursor.fetchall()
-        ]
-
-        for post in results:
-            if "dateTime" in post and isinstance(post["dateTime"], datetime):
-                post["dateTime"] = time_ago(post["dateTime"])
-            if "photos" in post and isinstance(post["photos"], list):
-                post["photos"] = [
-                    request.build_absolute_uri(photo) if request and photo else photo
-                    for photo in post["photos"]
-                    if photo and isinstance(photo, str) and photo.strip()
-                ]
-
-        return {'results': results}
-
-    except Exception as error:
-        print(f"Error: {error}")
-        return {'results': []}
-    finally:
-        if cursor:
-            cursor.close()
-        if connection:
-            connection.close()
-
-
-def create_post(accID, audience, caption, photos, taglist, request=None):
-    connection = None
-    cursor = None
-    try:
-        now = datetime.now(pytz.utc)
-
-        connection = connections["default"]
-        cursor = connection.cursor()
-
-        post_query = """
-            INSERT INTO glow.glow.posts_post (account_id, audience_id, caption, "dateTime")
-            VALUES (%s, %s, %s, %s)
+        account_id = fetch_value("SELECT id FROM glow.glow.accounts_account WHERE auth_user_id = %s", (user_id,))
+        if account_id:
+            execute("UPDATE glow.glow.accounts_account SET is_bot = TRUE WHERE id = %s", (account_id,))
+            return account_id
+        return fetch_value(
+            """
+            INSERT INTO glow.glow.accounts_account
+                (auth_user_id, firstname, lastname, bio, is_bot,
+                 gender, ui_appearance, cover_photo, is_online, terms_version, marketing_opt_in)
+            VALUES (%s, %s, %s, %s, TRUE, '', '', '', FALSE, '', FALSE)
             RETURNING id
-        """
-        cursor.execute(post_query, (accID, audience, caption, now))
-        post_id = cursor.fetchone()[0]
-
-        for tag_name in taglist:
-            cursor.execute("SELECT id FROM glow.glow.posts_tag WHERE tag = %s", (tag_name,))
-            result = cursor.fetchone()
-            tag_id = result[0] if result else None
-
-            if not tag_id:
-                cursor.execute("INSERT INTO glow.glow.posts_tag (tag) VALUES (%s) RETURNING id", (tag_name,))
-                tag_id = cursor.fetchone()[0]
-
-            cursor.execute("INSERT INTO glow.glow.posts_tag_post (tag_id, post_id) VALUES (%s, %s)", (tag_id, post_id))
-
-        os.makedirs(os.path.join(settings.MEDIA_ROOT, 'photos'), exist_ok=True)
-
-        for photo in photos:
-            name = photo.get("name")
-            base64_data = photo.get("origurl").split(",")[1]
-            image_data = base64.b64decode(base64_data)
-
-            filename = f"{datetime.now().timestamp()}_{name}"
-            photo_path = os.path.join("photos", filename)
-            full_path = os.path.join(settings.MEDIA_ROOT, photo_path)
-
-            with open(full_path, "wb") as f:
-                f.write(image_data)
-
-            media_link = os.path.join(settings.MEDIA_URL, photo_path)
-            cursor.execute("INSERT INTO glow.glow.posts_photo (link, post_id) VALUES (%s, %s)", (media_link, post_id))
-
-        cursor.execute("""
-            SELECT u.id, u.username, a.firstname, a.lastname, a.profile_photo
-            FROM glow.glow.accounts_account a
-            JOIN glow.glow.auth_user u ON a.auth_user_id = u.id
-            WHERE a.id = %s
-        """, (accID,))
-        user_row = cursor.fetchone()
-        user_id, username, firstname, lastname, profile_photo = user_row if user_row else (None, "", "", "", "")
-
-        cursor.execute("SELECT id, link FROM glow.posts_photo WHERE post_id = %s", (post_id,))
-        photos_data = [request.build_absolute_uri(link) for _, link in cursor.fetchall()]
-
-        cursor.execute("SELECT COUNT(*) FROM glow.glow.interactions_comment WHERE post_id = %s", (post_id,))
-        comment_count = cursor.fetchone()[0]
-
-        cursor.execute("SELECT COUNT(*) FROM glow.glow.interactions_glow WHERE post_id = %s", (post_id,))
-        glow_count = cursor.fetchone()[0]
-
-        response = {
-            "account_id": accID,
-            "caption": caption,
-            "comment_count": comment_count,
-            "dateTime": f"• {time_ago(now)}",
-            "firstname": firstname,
-            "lastname": lastname,
-            "glow_count": glow_count,
-            "glowers": [None],
-            "id": post_id,
-            "photos": photos_data,
-            "profile_photo": profile_photo,
-            "username": username
-        }
-
-        connection.commit()
-        return response
-
-    except Exception as error:
-        print(f"Error: {error}")
-        if connection:
-            connection.rollback()
-        return {"status": "error", "message": "Something went wrong."}
-
-
-    finally:
-        if cursor:
-            cursor.close()
-        if connection:
-            connection.close()
-
-
-
-def sendGlow(accID, postId):
-    connection = None
-    cursor = None
-    try:
-        now = datetime.now(pytz.utc)
-
-        connection = connections["default"]
-        cursor = connection.cursor()
-
-        # Skip the insert if this account already glowed this post.
-        glow_query = """
-            INSERT INTO glow.glow.interactions_glow (account_id, post_id, "timestamp")
-            SELECT %s, %s, %s
-            WHERE NOT EXISTS (
-                SELECT 1 FROM glow.glow.interactions_glow
-                WHERE account_id = %s AND post_id = %s
-            )
-            returning id
-        """
-        cursor.execute(glow_query, (accID, postId, now, accID, postId))
-
-        connection.commit()
-        return {"status": "success", "message": "Post glowed successfully"}
-
-    except Exception as error:
-        print(f"Error: {error}")
-        if connection:
-            connection.rollback()
-        return {"status": "error", "message": "Something went wrong."}
-
-    finally:
-        if cursor:
-            cursor.close()
-        if connection:
-            connection.close()
-
-
-def sendUnglow(accID, postId):
-    connection = None
-    cursor = None
-    try:
-        now = datetime.now(pytz.utc)
-
-        connection = connections["default"]
-        cursor = connection.cursor()
-
-        glow_query = """
-            DELETE FROM glow.glow.interactions_glow 
-            WHERE account_id = %s AND post_id = %s
-        """
-        cursor.execute(glow_query, (accID, postId))
-
-        connection.commit()
-        return {"status": "success", "message": "Post unglowed successfully"}
-
-    except Exception as error:
-        print(f"Error: {error}")
-        if connection:
-            connection.rollback()
-        return {"status": "error", "message": "Something went wrong."}
-
-    finally:
-        if cursor:
-            cursor.close()
-        if connection:
-            connection.close()
-
+            """,
+            (user_id, first, last, bio),
+        )

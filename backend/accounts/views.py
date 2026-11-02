@@ -35,6 +35,11 @@ from .api.decorators import (
     forgot_password_decorator
 )
 
+from GlowProject.throttles import AuthThrottle, WriteThrottle
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
+
+AUTH_THROTTLES = (AnonRateThrottle, UserRateThrottle, WriteThrottle, AuthThrottle)
+
 class GetAllAccounts(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
@@ -44,6 +49,7 @@ class GetAllAccounts(APIView):
         return Response(data)
 
 class Login(APIView):
+    throttle_classes = AUTH_THROTTLES
     permission_classes = (permissions.AllowAny,)
 
     def post(self, request):
@@ -127,6 +133,7 @@ class Logout(APIView):
 
 
 class Register(APIView):
+    throttle_classes = AUTH_THROTTLES
     permission_classes = (permissions.AllowAny,)
 
     @register_decorator()
@@ -146,6 +153,7 @@ class Register(APIView):
         return Response(data, status=data.get("status", 200))
 
 class ForgotPassword(APIView):
+    throttle_classes = AUTH_THROTTLES
     permission_classes = (permissions.AllowAny,)
 
     @forgot_password_decorator()
@@ -156,6 +164,7 @@ class ForgotPassword(APIView):
         return Response(data)
 
 class ResetPassword(APIView):
+    throttle_classes = AUTH_THROTTLES
     permission_classes = (permissions.AllowAny,)
     
     def post(self, request):
@@ -184,6 +193,23 @@ class GetProfile(APIView):
             viewer = None
         data = getProfile(profile_id, viewer_user_id=viewer.id if viewer else None)
         return Response(data)
+
+class UpdateMyProfile(APIView):
+    """PATCH your own profile: names, bio, gender, birthday, photos."""
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def patch(self, request):
+        from .profile_edit import ProfileError, update_profile
+
+        account = Account.objects.filter(auth_user=request.user).first()
+        if not account:
+            return Response({"detail": "Account not found."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            data = update_profile(account, request.data, request=request)
+        except ProfileError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(data)
+
 
 class GetTotalGlowsPostByUser(APIView):
     permission_classes = (permissions.AllowAny,)

@@ -45,3 +45,6 @@ typing_extensions==4.12.2
 uritemplate==4.1.1
 urllib3==2.2.3
 zope.interface==7.2
+gunicorn==23.0.0
+django-storages[s3]==1.14.4
+boto3==1.35.99

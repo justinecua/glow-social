@@ -1,3 +1,4 @@
+from posts.visibility import can_view_post, viewer_account_id
 from accounts.auth_utils import current_account_id
 
 from django.shortcuts import render
@@ -60,6 +61,8 @@ class ShowComments(APIView):
 
     @show_comments_decorator()
     def get(self, request, post_id):
+        if not can_view_post(post_id, viewer_account_id(request)):
+            return Response({"detail": "Post not found."}, status=status.HTTP_404_NOT_FOUND)
         data = showComments(post_id)
         return Response(data)
 
@@ -70,6 +73,8 @@ class AddComment(APIView):
         comment = request.data.get("comment")
         accID = current_account_id(request)  # ignore client-sent accID
         postId = request.data.get("postId")
+        if not can_view_post(postId, accID):
+            return Response({"detail": "Post not found."}, status=status.HTTP_404_NOT_FOUND)
         parentId = request.data.get("parentId")
 
         if not comment or not str(comment).strip():

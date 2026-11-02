@@ -19,6 +19,7 @@ from .views import (
     InviteInfo,
     MyInvites,
     Onboarding,
+    UpdateMyProfile,
     )
 
 urlpatterns = [
@@ -27,6 +28,7 @@ urlpatterns = [
     path('getAllAccounts/', GetAllAccounts.as_view(), name='getAllAccounts'),
     path('login/', Login.as_view(), name='login'),
     path("me/", MeView.as_view(), name="me"),
+    path("me/profile/", UpdateMyProfile.as_view(), name="updateMyProfile"),
     path('logout/', Logout.as_view(), name='logout'),
     path('register/', Register.as_view(), name='register'), 
     path('legal/', LegalInfo.as_view(), name='legalInfo'),

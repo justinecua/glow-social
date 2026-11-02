@@ -194,3 +194,108 @@ body,
     transparent 100%
   );
 }
+
+/* ---------- Motion ---------- */
+:root {
+  --ease-out-smooth: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Page entrance on route change (AppShell keys this by pathname). */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter {
+  animation: page-enter 0.35s var(--ease-out-smooth) backwards;
+}
+
+/* Feed cards fade/slide in as they mount. */
+@keyframes card-enter {
+  from { opacity: 0; transform: translateY(6px) scale(0.995); }
+  to   { opacity: 1; transform: none; }
+}
+[data-slot="card"] {
+  animation: card-enter 0.3s var(--ease-out-smooth) backwards;
+}
+
+/* Smooth color shifts for links, inputs, nav items and theme switching. */
+a,
+input,
+textarea,
+[role="tab"],
+[role="menuitem"] {
+  transition: color 0.15s ease, background-color 0.15s ease,
+    border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+/* Dropdowns / popovers from radix get a soft entrance. */
+[data-radix-popper-content-wrapper] > [data-state="open"] {
+  animation: card-enter 0.18s var(--ease-out-smooth) both;
+}
+
+/* Images fade in instead of popping. */
+img {
+  transition: opacity 0.3s ease;
+}
+
+/* Taps feel native on mobile: no grey flash, no 300ms double-tap delay. */
+a,
+button,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* ---------- Sparks ---------- */
+/* Your spark catching: a quick flare when you've just shared. */
+@keyframes spark-ignite {
+  0% { transform: scale(0.85); filter: brightness(2.2) saturate(1.6); }
+  35% { transform: scale(1.08); filter: brightness(1.5); }
+  100% { transform: scale(1); filter: none; }
+}
+/* The burning tip of an unseen spark's ring. */
+@keyframes spark-flicker {
+  0%, 100% { opacity: 1; }
+  40% { opacity: 0.7; }
+  60% { opacity: 0.95; }
+}
+/* Sparked: a warm flash that fades out. */
+@keyframes spark-warm {
+  0% { opacity: 0; transform: scale(0.6); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.3); }
+}
+
+/* Theme switch cross-fade (see theme-provider setTheme). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.3s;
+  animation-timing-function: var(--ease-out-smooth);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------- Scrollbar layout stability ----------
+   Always reserve the scrollbar's space so content doesn't shift sideways
+   when a page becomes scrollable or a modal locks scrolling. */
+html {
+  scrollbar-gutter: stable;
+}
+/* Radix (react-remove-scroll) adds a right margin to compensate for the
+   hidden scrollbar while a modal is open; the gutter already reserves it,
+   so drop that margin to avoid a double shift. */
+html body[data-scroll-locked] {
+  margin-right: 0 !important;
+}
+
+/* Horizontal strips (e.g. the Sparks timeline): scroll without a bar. */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

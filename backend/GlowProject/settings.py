@@ -43,6 +43,9 @@ SITE_ID = 1
 # Application definition
 
 INSTALLED_APPS = [
+    # Must be first: makes `manage.py runserver` serve ASGI, so WebSockets
+    # (friend requests, notifications, chat) work in development too.
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -63,6 +66,8 @@ INSTALLED_APPS = [
     'notifications',
     'interactions',
     'kudos',
+    'messaging',
+    'sparks',
     'drf_yasg',
     'corsheaders',
     'rest_framework_simplejwt.token_blacklist',
@@ -70,12 +75,12 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'GlowProject.timing.RequestTimingMiddleware',  # first: times the whole request
      'accounts.middleware.JWTTokenCookieMiddleware', 
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -134,6 +139,13 @@ DATABASES = {
         'OPTIONS': {
             'options': '-c search_path=glow,glow',  
         },
+        # Reuse database connections between requests instead of opening a
+        # new one every time (the DB is remote, so connecting is slow).
+        # Keep (workers x threads) below the database's max_connections.
+        'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '60')),
+        'CONN_HEALTH_CHECKS': True,  # replace connections that went stale
+        # Behind PgBouncer in transaction mode, server-side cursors break.
+        'DISABLE_SERVER_SIDE_CURSORS': os.getenv('DB_DISABLE_SERVER_SIDE_CURSORS') == 'True',
     }
 }
 
@@ -141,7 +153,7 @@ DATABASES = {
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://127.0.0.1:6379/1",
+        "LOCATION": f"redis://{os.getenv('REDIS_HOST', '127.0.0.1')}:{os.getenv('REDIS_PORT', '6379')}/1",
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
         }
@@ -218,6 +230,20 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    # Rate limits (see GlowProject/throttles.py). Counters live in Redis.
+    'DEFAULT_THROTTLE_CLASSES': (
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+        'GlowProject.throttles.WriteThrottle',
+    ),
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': os.getenv('THROTTLE_ANON', '120/min'),
+        'user': os.getenv('THROTTLE_USER', '1200/min'),
+        'write': os.getenv('THROTTLE_WRITE', '120/min'),
+        'auth': os.getenv('THROTTLE_AUTH', '10/min'),
+    },
+    # Number of trusted proxies in front of Django (for client IPs).
+    'NUM_PROXIES': int(os.getenv('NUM_PROXIES', '0')) or None,
 }
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
@@ -296,6 +322,32 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+# Where uploads go (GlowProject/media.py writes through this).
+#   default: local disk (MEDIA_ROOT), served at /media/ by nginx in prod.
+#   set S3_BUCKET to use S3-compatible object storage instead
+#   (AWS S3, Cloudflare R2, MinIO, DigitalOcean Spaces...). Put a CDN in
+#   front and set S3_PUBLIC_DOMAIN to it (e.g. media.glow.example.com).
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
+if os.getenv("S3_BUCKET"):
+    STORAGES["default"] = {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "bucket_name": os.getenv("S3_BUCKET"),
+            "endpoint_url": os.getenv("S3_ENDPOINT_URL") or None,  # R2/MinIO; empty for AWS
+            "region_name": os.getenv("S3_REGION") or None,
+            "access_key": os.getenv("S3_ACCESS_KEY_ID"),
+            "secret_key": os.getenv("S3_SECRET_ACCESS_KEY"),
+            "custom_domain": os.getenv("S3_PUBLIC_DOMAIN") or None,
+            "default_acl": None,               # use bucket policy (public-read for media)
+            "querystring_auth": False,         # plain, cacheable URLs
+            "file_overwrite": False,
+            "object_parameters": {"CacheControl": "public, max-age=2592000, immutable"},
+        },
+    }
+
 ASGI_APPLICATION = 'GlowProject.asgi.application'
 
 
@@ -303,7 +355,20 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("localhost", 6379)],
+            "hosts": [(os.getenv("REDIS_HOST", "localhost"), int(os.getenv("REDIS_PORT", "6379")))],
         },
+    },
+}
+
+
+# Logging: everything to stdout (container-friendly). LOG_LEVEL=DEBUG for more.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"plain": {"format": "%(asctime)s %(levelname)s %(name)s: %(message)s"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain"}},
+    "root": {"handlers": ["console"], "level": os.getenv("LOG_LEVEL", "INFO")},
+    "loggers": {
+        "django.db.backends": {"level": "WARNING"},  # SQL is too noisy at DEBUG
     },
 }

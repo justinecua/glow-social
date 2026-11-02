@@ -21,6 +21,10 @@ ACTIONS = {
     "unfriend": unfriend,
 }
 
+import logging
+
+log = logging.getLogger(__name__)
+
 class GlobalConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         # Identity comes from WebSocketAuthMiddleware (ticket or cookie),
@@ -33,7 +37,7 @@ class GlobalConsumer(AsyncWebsocketConsumer):
         self.room_group_name = f"user_{self.user_id}"
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
         await self.accept()
-        print(f"[WebSocket] User connected: user_id={self.user_id}")
+        log.debug("websocket connected: user_id=%s", self.user_id)
 
     async def disconnect(self, close_code):
         if getattr(self, "room_group_name", None):
@@ -42,6 +46,15 @@ class GlobalConsumer(AsyncWebsocketConsumer):
     async def receive(self, text_data):
         try:
             data = json.loads(text_data)
+        except (ValueError, TypeError):
+            return
+
+        # Typing indicator: only members of the conversation may signal it.
+        if data.get("type") == "typing":
+            await self.relay_typing(data.get("conversation_id"))
+            return
+
+        try:
             friend_id = int(data.get("friend_id"))
         except (ValueError, TypeError):
             return
@@ -113,3 +126,44 @@ class GlobalConsumer(AsyncWebsocketConsumer):
             "count": event["count"],
             "notifications": event["notifications"]
         }))
+
+    # ------------------------------------------------------------ messaging
+    async def relay_typing(self, conversation_id):
+        from messaging.queries import canTypeIn, memberIds
+
+        try:
+            conversation_id = int(conversation_id)
+        except (TypeError, ValueError):
+            return
+        if not await sync_to_async(canTypeIn)(conversation_id, self.user_id):
+            return
+        for uid in await sync_to_async(memberIds)(conversation_id):
+            if uid != self.user_id:
+                await self.channel_layer.group_send(
+                    f"user_{uid}",
+                    {"type": "chat_typing", "conversation_id": conversation_id,
+                     "account_id": self.user_id},
+                )
+
+    async def posts_new(self, event):
+        # A friend posted: the app refreshes its "New posts" pill.
+        await self.send(text_data=json.dumps({"type": "posts_new"}))
+
+    async def sparks_updated(self, event):
+        """A friend posted or deleted a spark: the app refetches Today."""
+        await self.send(text_data=json.dumps({"type": "sparks_updated"}))
+
+    async def chat_message(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def chat_message_updated(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def chat_read(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def chat_typing(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def chat_conversation(self, event):
+        await self.send(text_data=json.dumps(event))

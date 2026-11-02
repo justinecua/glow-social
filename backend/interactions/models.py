@@ -18,6 +18,12 @@ class Comment(models.Model):
     )
     edited_at = models.DateTimeField(null=True, blank=True)
 
+    class Meta:
+        indexes = [
+            # Feed affinity: "posts this viewer commented on lately".
+            models.Index(fields=["account", "dateTime"], name="comment_author_time_idx"),
+        ]
+
     def __str__(self):
         return self.content
 
@@ -25,6 +31,15 @@ class Glow(models.Model):
     account = models.ForeignKey(Account, null=True, on_delete=models.CASCADE)
     post = models.ForeignKey(Post, null=True, on_delete=models.CASCADE)
     timestamp = models.DateTimeField(auto_now_add=True, null=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["account", "post"], name="glow_one_per_account_post"),
+        ]
+        indexes = [
+            # Feed affinity: "posts this viewer glowed lately".
+            models.Index(fields=["account", "timestamp"], name="glow_author_time_idx"),
+        ]
 
     def __str__(self):
         return f"{self.account.firstname} reacted to {self.post.caption}"

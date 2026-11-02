@@ -1,99 +1,10 @@
-import logging
-from django.db import connections, transaction
-from rest_framework.response import Response
-from django.contrib.auth.hashers import make_password
+from django.db import transaction
 from django.utils import timezone
+
+from GlowProject.db import execute, fetch_all, fetch_column, fetch_one, fetch_value
 from posts.queries import time_ago
-from datetime import datetime
-import pytz
 
-def countGlows(post_id):
-    try:
-        query = f"""
-                SELECT COUNT(*)
-                FROM glow.interactions_glow
-                WHERE glow.interactions_glow.post_id = %s
-                """
-        connection = connections['default']
-        cursor = connection.cursor()
-        cursor.execute(query, (post_id,))
-
-        results = [
-            dict(
-                (cursor.description[i][0], value if value is not None else "")
-                for i, value in enumerate(row)
-            )
-            for row in cursor.fetchall()
-        ]
-
-        return results
-
-    except Exception as error:
-        print(f"Error: {error}")
-    finally:        
-        if cursor:
-            cursor.close()
-        if connection:
-            connection.close()
-
-def getProfileGlows(post_id):
-    try:
-        query = f"""
-                SELECT glow.interactions_glow.id AS glow_id, timestamp, account_id, post_id, firstname, lastname, profile_photo
-                FROM glow.interactions_glow
-                JOIN glow.accounts_account ON glow.interactions_glow.account_id = glow.accounts_account.id
-                WHERE glow.interactions_glow.post_id = %s
-                """
-        connection = connections['default']
-        cursor = connection.cursor()
-        cursor.execute(query, (post_id,))
-
-        results = [
-            dict(
-                (cursor.description[i][0], value if value is not None else "")
-                for i, value in enumerate(row)
-            )
-            for row in cursor.fetchall()
-        ]
-
-        return results
-
-    except Exception as error:
-        print(f"Error: {error}")
-    finally:        
-        if cursor:
-            cursor.close()
-        if connection:
-            connection.close()
-
-def countComments(post_id):
-    try:
-        query = f"""
-                SELECT COUNT(*) AS total_comments
-                FROM glow.interactions_comment
-                WHERE glow.interactions_comment.post_id = %s
-                """
-        connection = connections['default']
-        cursor = connection.cursor()
-        cursor.execute(query, (post_id,))
-
-        results = [
-            dict(
-                (cursor.description[i][0], value if value is not None else "")
-                for i, value in enumerate(row)
-            )
-            for row in cursor.fetchall()
-        ]
-
-        return results
-        
-    except Exception as error:
-        print(f"Error: {error}")
-    finally:        
-        if cursor:
-            cursor.close()
-        if connection:
-            connection.close()
+MAX_COMMENT_LENGTH = 255
 
 COMMENT_SELECT = """
     SELECT
@@ -103,144 +14,107 @@ COMMENT_SELECT = """
         c.parent_id,
         c.account_id,
         (c.edited_at IS NOT NULL) AS edited,
-        u.username,
-        a.profile_photo
-    FROM glow.glow.interactions_comment AS c
-    LEFT JOIN
-        glow.glow.accounts_account AS a ON c.account_id = a.id
-    LEFT JOIN
-        glow.glow.auth_user AS u ON a.auth_user_id = u.id
+        COALESCE(u.username, '') AS username,
+        COALESCE(a.profile_photo, '') AS profile_photo
+    FROM glow.glow.interactions_comment c
+    LEFT JOIN glow.glow.accounts_account a ON a.id = c.account_id
+    LEFT JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
 """
 
 
-def _rows_to_comments(cursor):
-    columns = [col[0] for col in cursor.description]
-    results = []
-    for row in cursor.fetchall():
-        comment = {
-            col: (value if value is not None else "")
-            for col, value in zip(columns, row)
-        }
-        # Keep parent_id as null (not "") so the client can tell top-level apart
-        comment["parent_id"] = row[columns.index("parent_id")]
-        if isinstance(comment.get("dateTime"), datetime):
-            comment["dateTime"] = time_ago(comment["dateTime"])
-        results.append(comment)
-    return results
+class CommentError(ValueError):
+    pass
 
 
-# Note: these functions intentionally do NOT call connection.close().
-# Django manages the request's DB connection; closing it here forces a fresh
-# connection on every query, which made opening a post modal noticeably slow.
-
-def showComments(post_id):
-    try:
-        with connections["default"].cursor() as cursor:
-            cursor.execute(
-                COMMENT_SELECT
-                + """
-                WHERE c.post_id = %s
-                ORDER BY c."dateTime" ASC, c.id ASC
-                """,
-                (post_id,),
-            )
-            return _rows_to_comments(cursor)
-    except Exception as error:
-        print(f"Error: {error}")
-        return []
-
-
-def addComment(comment, postId, accID, parentId=None):
-    connection = connections["default"]
-    try:
-        now = datetime.now(pytz.utc)
-
-        with transaction.atomic(), connection.cursor() as cursor:
-            # Replies are one level deep: if replying to a reply, attach it to
-            # that reply's top-level comment. Parent must belong to the same post.
-            if parentId:
-                cursor.execute(
-                    """
-                    SELECT id, parent_id
-                    FROM glow.glow.interactions_comment
-                    WHERE id = %s AND post_id = %s
-                    """,
-                    (parentId, postId),
-                )
-                parent = cursor.fetchone()
-                if not parent:
-                    return {"status": "error", "message": "Comment to reply to was not found."}
-                parentId = parent[1] or parent[0]
-
-            cursor.execute(
-                """
-                INSERT INTO glow.glow.interactions_comment
-                    (content, "dateTime", post_id, account_id, parent_id)
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING id
-                """,
-                (comment, now, postId, accID, parentId or None),
-            )
-            new_id = cursor.fetchone()[0]
-
-            cursor.execute(COMMENT_SELECT + " WHERE c.id = %s", (new_id,))
-            created = _rows_to_comments(cursor)
-
-        return {
-            "status": "success",
-            "message": "Reply added successfully" if parentId else "Comment added successfully",
-            "comment": created[0] if created else None,
-        }
-
-    except Exception as error:
-        print(f"Error: {error}")
-        return {"status": "error", "message": "Something went wrong."}
-
-
-def editComment(comment_id, account_id, text):
-    """Only the comment's author can edit it."""
-    text = (text or "").strip()
+def clean_comment(text):
+    text = str(text or "").strip()
     if not text:
-        return {"status": 400, "message": "Comment cannot be empty."}
-    if len(text) > 255:
-        return {"status": 400, "message": "Comments can be up to 255 characters."}
-    with connections["default"].cursor() as cursor:
-        cursor.execute(
+        raise CommentError("Comment cannot be empty.")
+    if len(text) > MAX_COMMENT_LENGTH:
+        raise CommentError(f"Comments can be up to {MAX_COMMENT_LENGTH} characters.")
+    return text
+
+
+def shape_comments(comments):
+    for comment in comments:
+        comment["dateTime"] = time_ago(comment["dateTime"]) if comment["dateTime"] else ""  # "• 5 mins ago"
+    return comments  # parent_id stays null for top-level comments so the app can tell them apart
+
+
+def find_comment(comment_id):
+    found = shape_comments(fetch_all(COMMENT_SELECT + " WHERE c.id = %s", (comment_id,)))
+    return found[0] if found else None
+
+
+def list_comments(post_id):  # oldest first
+    return shape_comments(fetch_all(
+        COMMENT_SELECT + ''' WHERE c.post_id = %s ORDER BY c."dateTime" ASC, c.id ASC''',
+        (post_id,),
+    ))
+
+
+def top_level_parent(parent_id, post_id):  # replies are one level deep: a reply to a reply joins its thread
+    parent = fetch_one(
+        "SELECT id, parent_id FROM glow.glow.interactions_comment WHERE id = %s AND post_id = %s",
+        (parent_id, post_id),
+    )
+    if not parent:
+        raise CommentError("Comment to reply to was not found.")
+    return parent["parent_id"] or parent["id"]
+
+
+def add_comment(text, post_id, account_id, parent_id=None):
+    text = clean_comment(text)
+    if parent_id:
+        parent_id = top_level_parent(parent_id, post_id)
+
+    with transaction.atomic():
+        comment_id = fetch_value(
             """
-            UPDATE glow.glow.interactions_comment
-            SET content = %s, edited_at = %s
-            WHERE id = %s AND account_id = %s
+            INSERT INTO glow.glow.interactions_comment
+                (content, "dateTime", post_id, account_id, parent_id)
+            VALUES (%s, %s, %s, %s, %s)
             RETURNING id
             """,
-            (text, datetime.now(pytz.utc), comment_id, account_id),
+            (text, timezone.now(), post_id, account_id, parent_id or None),
         )
-        if not cursor.fetchone():
-            return {"status": 404, "message": "Comment not found or not yours."}
-        cursor.execute(COMMENT_SELECT + " WHERE c.id = %s", (comment_id,))
-        return {"status": 200, "comment": _rows_to_comments(cursor)[0]}
+    return {
+        "status": "success",
+        "message": "Reply added successfully" if parent_id else "Comment added successfully",
+        "comment": find_comment(comment_id),
+    }
 
 
-def deleteComment(comment_id, account_id):
-    """The comment's author, or the author of the post it's on, can delete
-    it. Replies to it are deleted too (FK cascade)."""
-    with transaction.atomic(), connections["default"].cursor() as cursor:
-        cursor.execute(
+def edit_comment(comment_id, account_id, text):  # only the comment's author can edit it
+    text = clean_comment(text)
+    updated = execute(
+        """
+        UPDATE glow.glow.interactions_comment
+        SET content = %s, edited_at = %s
+        WHERE id = %s AND account_id = %s
+        """,
+        (text, timezone.now(), comment_id, account_id),
+    )
+    if not updated:
+        return None
+    return find_comment(comment_id)
+
+
+def delete_comment(comment_id, account_id):  # the comment's author, or the post's author, can delete it
+    with transaction.atomic():
+        allowed = fetch_value(
             """
-            SELECT c.id FROM glow.glow.interactions_comment c
+            SELECT 1 FROM glow.glow.interactions_comment c
             JOIN glow.glow.posts_post p ON p.id = c.post_id
-            WHERE c.id = %s AND (c.account_id = %s OR p.account_id = %s)
+            WHERE c.id = %(c)s AND (c.account_id = %(a)s OR p.account_id = %(a)s)
             """,
-            (comment_id, account_id, account_id),
+            {"c": comment_id, "a": account_id},
         )
-        if not cursor.fetchone():
-            return {"status": 404, "message": "Comment not found or you can't delete it."}
-        # Delete replies explicitly (raw SQL bypasses Django's cascade).
-        cursor.execute(
+        if not allowed:
+            return None
+        reply_ids = fetch_column(  # foreign keys don't cascade, so replies go first
             "DELETE FROM glow.glow.interactions_comment WHERE parent_id = %s RETURNING id",
             (comment_id,),
         )
-        reply_ids = [r[0] for r in cursor.fetchall()]
-        cursor.execute(
-            "DELETE FROM glow.glow.interactions_comment WHERE id = %s", (comment_id,)
-        )
-    return {"status": 200, "deleted_ids": [comment_id] + reply_ids}
+        execute("DELETE FROM glow.glow.interactions_comment WHERE id = %s", (comment_id,))
+    return [comment_id] + reply_ids

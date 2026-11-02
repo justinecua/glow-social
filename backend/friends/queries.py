@@ -1,277 +1,298 @@
-
-from django.db import connections
-from rest_framework.response import Response
+from django.db import transaction
 from django.utils import timezone
-from django.conf import settings
-from datetime import datetime
-import pytz
-from django.db import connections
 
-def getTotalFriends(account_id):
-    try:
-        query = f"""
-            SELECT COUNT(*) AS total_friends
-            FROM glow.friends_friend
-            WHERE status = 'Friends' AND (user_id = %s OR friend_id = %s);
-                """
-        connection = connections['default']
-        cursor = connection.cursor()
-        cursor.execute(query, (account_id, account_id))
-        result = cursor.fetchone()
-        return result[0] if result else 0 
+from GlowProject.db import execute, fetch_all, fetch_column, fetch_one, fetch_value
+from notifications.queries import create_notification
 
-    except Exception as error:
-        print(f"Error: {error}")
-    finally:        
-        if cursor:
-            cursor.close()
-        if connection:
-            connection.close()
+NOTIFICATION_TYPE_ID = """
+    (SELECT id FROM glow.glow.notifications_notificationtype WHERE type = %s LIMIT 1)
+"""
 
-def getFriendList(account_id):
-    try:
-        query = f"""
-            SELECT * AS total_friends
-            FROM glow.friends_friend
-            WHERE status = 'Friends' AND (user_id = %s OR friend_id = %s);
-                """
-        connection = connections['default']
-        cursor = connection.cursor()
-        cursor.execute(query, (account_id, account_id))
-        result = cursor.fetchone()
-        return result[0] if result else 0 
 
-    except Exception as error:
-        print(f"Error: {error}")
-    finally:        
-        if cursor:
-            cursor.close()
-        if connection:
-            connection.close()
+def friend_ids(account_id):  # everyone this account is friends with
+    if not account_id:
+        return []
+    return fetch_column(
+        """
+        SELECT CASE WHEN user_id = %(me)s THEN friend_id ELSE user_id END
+        FROM glow.glow.friends_friend
+        WHERE status = 'Friends' AND (user_id = %(me)s OR friend_id = %(me)s)
+        """,
+        {"me": account_id},
+    )
 
-def addFriend(friend_id, user_id):
-    try:
-        now = datetime.now(pytz.utc)
-        status = "Pending"
 
-        connection = connections["default"]
-        cursor = connection.cursor()
+def are_friends(a_id, b_id):
+    return fetch_value(
+        """
+        SELECT 1 FROM glow.glow.friends_friend
+        WHERE status = 'Friends'
+          AND ((user_id = %(a)s AND friend_id = %(b)s) OR (user_id = %(b)s AND friend_id = %(a)s))
+        """,
+        {"a": a_id, "b": b_id},
+    ) is not None
 
-        # Block duplicates in either direction (A->B or B->A).
-        cursor.execute(
-            """
-            SELECT 1 FROM glow.glow.friends_friend
-            WHERE (user_id = %s AND friend_id = %s) OR (user_id = %s AND friend_id = %s)
-            LIMIT 1
-            """,
-            (user_id, friend_id, friend_id, user_id),
-        )
-        if cursor.fetchone():
+
+def count_friends(account_id):
+    return fetch_value(
+        """
+        SELECT COUNT(*) FROM glow.glow.friends_friend
+        WHERE status = 'Friends' AND (user_id = %(me)s OR friend_id = %(me)s)
+        """,
+        {"me": account_id},
+        default=0,
+    )
+
+
+def find_friendship(account_id, other_id):  # the request or friendship between two people, either direction
+    return fetch_one(
+        """
+        SELECT * FROM glow.glow.friends_friend
+        WHERE (user_id = %(a)s AND friend_id = %(b)s) OR (user_id = %(b)s AND friend_id = %(a)s)
+        """,
+        {"a": account_id, "b": other_id},
+        blank_nulls=True,
+    )
+
+
+def display_name(account_id):  # first + last name, else the username
+    person = fetch_one(
+        """
+        SELECT a.firstname, a.lastname, u.username
+        FROM glow.glow.accounts_account a
+        JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
+        WHERE a.id = %s
+        """,
+        (account_id,),
+    )
+    if not person:
+        return "Someone"
+    full_name = " ".join(filter(None, [person["firstname"], person["lastname"]]))
+    return full_name or person["username"]
+
+
+def is_active_person(account_id):
+    return fetch_value(
+        """
+        SELECT 1 FROM glow.glow.accounts_account a
+        JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
+        WHERE a.id = %s AND u.is_active AND NOT a.is_bot
+        """,
+        (account_id,),
+    ) is not None
+
+
+def delete_request_notifications(a_id, b_id):  # read or not, between these two people
+    execute(
+        f"""
+        DELETE FROM glow.glow.notifications_notification
+        WHERE ((notif_to_id = %s AND notif_from_id = %s) OR (notif_to_id = %s AND notif_from_id = %s))
+          AND notif_type_id = {NOTIFICATION_TYPE_ID}
+        """,
+        (a_id, b_id, b_id, a_id, "friend_request"),
+    )
+
+
+def add_friend(friend_id, user_id):  # user_id sends a request to friend_id
+    if not is_active_person(friend_id):
+        return {"status": "error", "message": "That person wasn't found."}
+
+    with transaction.atomic():
+        if find_friendship(user_id, friend_id):
             return {"status": "error", "message": "Friend request already exists or you are already friends."}
-
-        friend_query = """
+        execute(
+            """
             INSERT INTO glow.glow.friends_friend (status, date_friend_request, friend_id, user_id)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id
-        """
-        cursor.execute(friend_query, (status, now, friend_id, user_id))
-        friend_request_id = cursor.fetchone()[0]
-
-        notif_type_query = """
-            SELECT id FROM glow.glow.notifications_notificationtype WHERE type = %s LIMIT 1
-        """
-        cursor.execute(notif_type_query, ("friend_request",))
-        notif_type_id = cursor.fetchone()
-        if not notif_type_id:
-            raise Exception("Notification type 'friend_request' not found.")
-        notif_type_id = notif_type_id[0]
-
-        user_name_query = "SELECT firstname FROM glow.glow.accounts_account WHERE id = %s"
-        cursor.execute(user_name_query, (user_id,))
-        user_name = cursor.fetchone()[0] or "Someone"
-
-        notif_content = f"{user_name} sent you a friend request"
-
-        notif_query = """
-            INSERT INTO glow.glow.notifications_notification (status, notif_type_id, notif_to_id, notif_from_id, content, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """
-        cursor.execute(
-            notif_query,
-            ("Unread", notif_type_id, friend_id, user_id, notif_content, now),
+            VALUES ('Pending', %s, %s, %s)
+            """,
+            (timezone.now(), friend_id, user_id),
         )
+        delete_request_notifications(friend_id, user_id)  # one request notification per person
+        create_notification("friend_request", friend_id, user_id, f"{display_name(user_id)} sent you a friend request")
 
-        connection.commit()
-        return {"status": "success", "message": "Friend request sent successfully."}
-
-    except Exception as error:
-        print(f"Error: {error}")
-    finally:        
-        if cursor:
-            cursor.close()
+    return {"status": "success", "message": "Friend request sent successfully."}
 
 
-def cancelFriendRequest(friend_id, user_id):
-    try:
-        connection = connections["default"]
-        cursor = connection.cursor()
-
-        delete_query = """
-            DELETE FROM glow.glow.friends_friend 
+def cancel_friend_request(friend_id, user_id):  # cancel your request, or decline theirs
+    with transaction.atomic():
+        execute(
+            """
+            DELETE FROM glow.glow.friends_friend
             WHERE ((friend_id = %s AND user_id = %s) OR (friend_id = %s AND user_id = %s))
               AND status = 'Pending'
-        """
-        cursor.execute(delete_query, (friend_id, user_id, user_id, friend_id))
-
-        delete_notif_query = """
-            DELETE FROM glow.glow.notifications_notification
-            WHERE ((notif_to_id = %s AND notif_from_id = %s) OR (notif_to_id = %s AND notif_from_id = %s))
-              AND status = 'Unread'
-        """
-        cursor.execute(delete_notif_query, (friend_id, user_id, user_id, friend_id))
-
-        connection.commit()
-        return {
-            "status": "success",
-            "message": "Friend request canceled or removed.",
-        }
-
-    except Exception as error:
-        print(f"Error canceling friend request: {error}")
-        return {
-            "status": "error",
-            "message": "An error occurred while canceling the friend request.",
-        }
-
-    finally:
-        if cursor:
-            cursor.close()
+            """,
+            (friend_id, user_id, user_id, friend_id),
+        )
+        delete_request_notifications(friend_id, user_id)
+    return {"status": "success", "message": "Friend request canceled or removed."}
 
 
-def acceptFriend(friend_id, user_id):
-    try:
-        connection = connections["default"]
-        cursor = connection.cursor()
+def accept_friend(friend_id, user_id):  # user_id accepts the request friend_id sent
+    with transaction.atomic():
+        accepted = execute(
+            """
+            UPDATE glow.glow.friends_friend
+            SET status = 'Friends', date_became_friends = %s
+            WHERE user_id = %s AND friend_id = %s AND status = 'Pending'
+            """,
+            (timezone.now(), friend_id, user_id),
+        ) > 0
+        if not accepted:
+            return {"status": "error", "message": "No pending request."}
 
-        update_query = """
-            UPDATE glow.glow.friends_friend 
-            SET status = 'Friends'
-            WHERE friend_id = %s AND user_id = %s AND status = 'Pending'
-        """
-        cursor.execute(update_query, (user_id, friend_id)) 
+        execute(
+            f"""
+            UPDATE glow.glow.notifications_notification SET status = 'Read'
+            WHERE notif_to_id = %s AND notif_from_id = %s AND status = 'Unread'
+              AND notif_type_id = {NOTIFICATION_TYPE_ID}
+            """,
+            (user_id, friend_id, "friend_request"),
+        )
+        create_notification("friend_accepted", friend_id, user_id, f"{display_name(user_id)} accepted your friend request")
 
-        connection.commit()
-        return {
-            "status": "success",
-            "message": "Friend request accepted.",
-        }
+    return {"status": "success", "message": "Friend request accepted."}
 
-    except Exception as error:
-        print(f"Error accepting friend request: {error}")
-        return {
-            "status": "error",
-            "message": "An error occurred while accepting the friend request.",
-        }
-
-    finally:
-        if cursor:
-            cursor.close()
 
 def unfriend(friend_id, user_id):
-    try:
-        connection = connections["default"]
-        cursor = connection.cursor()
-
-        delete_query = """
+    with transaction.atomic():
+        execute(
+            """
             DELETE FROM glow.glow.friends_friend
             WHERE (friend_id = %s AND user_id = %s) OR (friend_id = %s AND user_id = %s)
-        """
-        cursor.execute(delete_query, (friend_id, user_id, user_id, friend_id))
-
-        connection.commit()
-        return {
-            "status": "success",
-            "message": "You are no longer friends.",
-        }
-
-    except Exception as error:
-        print(f"Error unfriending: {error}")
-        return {
-            "status": "error",
-            "message": "An error occurred while unfriending.",
-        }
-
-    finally:
-        if cursor:
-            cursor.close()
-
-def checkUserFriendRequest(friend_id, accId):
-    try:
-        #Dheck if there is any friend request between two users
-        # It checks both directions:
-        # (1) If user A sent a request to user B
-        # (2) If user B sent a request to user A
-        query = """
-            SELECT * FROM glow.glow.friends_friend 
-            WHERE (friend_id = %s AND user_id = %s)
-               OR (friend_id = %s AND user_id = %s)
-        """
-        connection = connections["default"]
-        cursor = connection.cursor()
-        cursor.execute(query, (friend_id, accId, accId, friend_id))
-        row = cursor.fetchone()
-
-        if row is None:
-            return None 
-        
-        result = {
-            cursor.description[i][0]: value if value is not None else ""
-            for i, value in enumerate(row)
-        }
-
-        return result
-
-    except Exception as error:
-        print(f"Error: {error}")
-    finally:
-        if cursor:
-            cursor.close()
-        if connection:
-            connection.close()
-
-
-def myFriends(account_id):
-    """Friends plus incoming and outgoing pending requests for one account."""
-    with connections["default"].cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT
-                CASE WHEN f.user_id = %s THEN f.friend_id ELSE f.user_id END AS id,
-                u.username, a.firstname, a.lastname, a.profile_photo,
-                f.status,
-                CASE WHEN f.user_id = %s THEN 'outgoing' ELSE 'incoming' END AS direction,
-                f.date_friend_request, f.date_became_friends
-            FROM glow.glow.friends_friend f
-            JOIN glow.glow.accounts_account a
-                ON a.id = CASE WHEN f.user_id = %s THEN f.friend_id ELSE f.user_id END
-            JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
-            WHERE (f.user_id = %s OR f.friend_id = %s)
-              AND f.status IN ('Friends', 'Pending')
-            ORDER BY COALESCE(f.date_became_friends, f.date_friend_request) DESC
             """,
-            (account_id,) * 5,
+            (friend_id, user_id, user_id, friend_id),
         )
-        cols = [c[0] for c in cursor.description]
-        rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
+        execute(
+            """
+            DELETE FROM glow.glow.friends_closefriend
+            WHERE (owner_id = %s AND friend_id = %s) OR (owner_id = %s AND friend_id = %s)
+            """,
+            (friend_id, user_id, user_id, friend_id),
+        )
+        delete_request_notifications(friend_id, user_id)
+    return {"status": "success", "message": "You are no longer friends."}
 
-    out = {"friends": [], "incoming": [], "outgoing": []}
-    for r in rows:
-        for k in ("firstname", "lastname", "profile_photo"):
-            r[k] = r.get(k) or ""
-        for k in ("date_friend_request", "date_became_friends"):
-            r[k] = r[k].isoformat() if r.get(k) else None
-        if r["status"] == "Friends":
-            out["friends"].append(r)
-        else:
-            out[r["direction"]].append(r)
-    return out
+
+def add_close_friend(owner_id, friend_id):
+    execute(
+        """
+        INSERT INTO glow.glow.friends_closefriend (owner_id, friend_id, created_at)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (owner_id, friend_id) DO NOTHING
+        """,
+        (owner_id, friend_id, timezone.now()),
+    )
+
+
+def remove_close_friend(owner_id, friend_id):
+    execute(
+        "DELETE FROM glow.glow.friends_closefriend WHERE owner_id = %s AND friend_id = %s",
+        (owner_id, friend_id),
+    )
+
+
+def my_friends(account_id):  # friends, plus requests you sent and received
+    rows = fetch_all(
+        """
+        SELECT
+            CASE WHEN f.user_id = %(me)s THEN f.friend_id ELSE f.user_id END AS id,
+            u.username,
+            COALESCE(a.firstname, '') AS firstname,
+            COALESCE(a.lastname, '') AS lastname,
+            COALESCE(a.profile_photo, '') AS profile_photo,
+            f.status,
+            CASE WHEN f.user_id = %(me)s THEN 'outgoing' ELSE 'incoming' END AS direction,
+            EXISTS (
+                SELECT 1 FROM glow.glow.friends_closefriend c
+                WHERE c.owner_id = %(me)s
+                  AND c.friend_id = CASE WHEN f.user_id = %(me)s THEN f.friend_id ELSE f.user_id END
+            ) AS is_close,
+            f.date_friend_request,
+            f.date_became_friends
+        FROM glow.glow.friends_friend f
+        JOIN glow.glow.accounts_account a
+          ON a.id = CASE WHEN f.user_id = %(me)s THEN f.friend_id ELSE f.user_id END
+        JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
+        WHERE (f.user_id = %(me)s OR f.friend_id = %(me)s)
+          AND f.status IN ('Friends', 'Pending')
+        ORDER BY COALESCE(f.date_became_friends, f.date_friend_request) DESC
+        """,
+        {"me": account_id},
+    )
+
+    result = {"friends": [], "incoming": [], "outgoing": []}
+    for row in rows:
+        for key in ("date_friend_request", "date_became_friends"):
+            row[key] = row[key].isoformat() if row[key] else None
+        group = "friends" if row["status"] == "Friends" else row["direction"]
+        result[group].append(row)
+    return result
+
+
+def people_you_may_know(account_id, limit=5):  # friends of friends first, then recently active people
+    people = fetch_all(
+        """
+        WITH mine AS (
+            SELECT CASE WHEN user_id = %(me)s THEN friend_id ELSE user_id END AS id
+            FROM glow.glow.friends_friend
+            WHERE status = 'Friends' AND (user_id = %(me)s OR friend_id = %(me)s)
+        ),
+        known AS (  -- anyone you already have a request or friendship with
+            SELECT CASE WHEN user_id = %(me)s THEN friend_id ELSE user_id END AS id
+            FROM glow.glow.friends_friend
+            WHERE user_id = %(me)s OR friend_id = %(me)s
+        ),
+        friends_of_friends AS (
+            SELECT CASE WHEN f.user_id = m.id THEN f.friend_id ELSE f.user_id END AS id,
+                   m.id AS via
+            FROM glow.glow.friends_friend f
+            JOIN mine m ON f.user_id = m.id OR f.friend_id = m.id
+            WHERE f.status = 'Friends'
+        )
+        SELECT a.id, u.username,
+               COALESCE(a.firstname, '') AS firstname,
+               COALESCE(a.lastname, '') AS lastname,
+               COALESCE(a.profile_photo, '') AS profile_photo,
+               COUNT(DISTINCT fof.via) AS mutual_count
+        FROM friends_of_friends fof
+        JOIN glow.glow.accounts_account a ON a.id = fof.id
+        JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
+        WHERE u.is_active
+          AND NOT a.is_bot
+          AND fof.id <> %(me)s
+          AND fof.id NOT IN (SELECT id FROM known)
+        GROUP BY a.id, u.username, a.firstname, a.lastname, a.profile_photo
+        ORDER BY mutual_count DESC, a.id DESC
+        LIMIT %(limit)s
+        """,
+        {"me": account_id, "limit": limit},
+    )
+    if len(people) >= limit:
+        return people
+
+    already_listed = [account_id] + [p["id"] for p in people]
+    people += fetch_all(
+        """
+        SELECT a.id, u.username,
+               COALESCE(a.firstname, '') AS firstname,
+               COALESCE(a.lastname, '') AS lastname,
+               COALESCE(a.profile_photo, '') AS profile_photo,
+               0 AS mutual_count
+        FROM glow.glow.accounts_account a
+        JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
+        LEFT JOIN glow.glow.posts_post p ON p.account_id = a.id
+        WHERE u.is_active
+          AND NOT a.is_bot
+          AND NOT (a.id = ANY(%(skip)s))
+          AND a.id NOT IN (
+              SELECT CASE WHEN user_id = %(me)s THEN friend_id ELSE user_id END
+              FROM glow.glow.friends_friend
+              WHERE user_id = %(me)s OR friend_id = %(me)s
+          )
+        GROUP BY a.id, u.username, a.firstname, a.lastname, a.profile_photo
+        ORDER BY MAX(p."dateTime") DESC NULLS LAST, a.id DESC
+        LIMIT %(n)s
+        """,
+        {"me": account_id, "skip": already_listed, "n": limit - len(people)},
+    )
+    return people
