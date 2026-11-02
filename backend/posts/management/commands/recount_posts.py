@@ -1,12 +1,6 @@
-"""Repair stored glow/comment counts on posts.
-
-The counts are maintained by triggers, so drift should be rare (e.g. rows
-changed while triggers were disabled, or a manual SQL fix). Safe to run any
-time; only rows whose counts are wrong are updated. Suggested: nightly cron.
-"""
-
 from django.core.management.base import BaseCommand
-from django.db import connection
+
+from GlowProject.db import execute
 
 FIX = """
 WITH actual AS (
@@ -24,9 +18,8 @@ WHERE a.id = p.id
 
 
 class Command(BaseCommand):
-    help = "Recompute posts' stored glow/comment counts where they've drifted."
+    help = "Recompute posts' stored glow/comment counts where they've drifted (triggers keep them right; safe nightly)."
 
     def handle(self, *args, **options):
-        with connection.cursor() as cursor:
-            cursor.execute(FIX)
-            self.stdout.write(self.style.SUCCESS(f"Fixed {cursor.rowcount} post(s)."))
+        fixed = execute(FIX)
+        self.stdout.write(self.style.SUCCESS(f"Fixed {fixed} post(s)."))

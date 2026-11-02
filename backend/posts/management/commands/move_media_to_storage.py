@@ -1,13 +1,3 @@
-"""Copy existing local uploads (MEDIA_ROOT) into the configured storage
-(S3/R2/MinIO, see settings.STORAGES) and rewrite the stored links.
-
-Run once after setting S3_BUCKET:
-    python manage.py move_media_to_storage --dry-run
-    python manage.py move_media_to_storage
-Idempotent: links already pointing at the storage are skipped. Local files
-are left in place (delete them yourself once you've checked the site).
-"""
-
 import os
 from urllib.parse import urlparse
 
@@ -15,10 +5,10 @@ from django.conf import settings
 from django.core.files import File
 from django.core.files.storage import default_storage
 from django.core.management.base import BaseCommand, CommandError
-from django.db import connection
 
-# (table, id column, link column)
-COLUMNS = [
+from GlowProject.db import execute, fetch_tuples
+
+COLUMNS = [  # (table, id column, link column)
     ("posts_photo", "id", "link"),
     ("sparks_spark", "id", "photo"),
     ("accounts_account", "id", "profile_photo"),
@@ -27,7 +17,7 @@ COLUMNS = [
 
 
 class Command(BaseCommand):
-    help = "Move local media files to the configured object storage and update links."
+    help = "Copy local uploads to S3_BUCKET storage and rewrite links. Safe to re-run; local files are kept. Try --dry-run first."
 
     def add_arguments(self, parser):
         parser.add_argument("--dry-run", action="store_true")
@@ -38,9 +28,9 @@ class Command(BaseCommand):
         prefix = settings.MEDIA_URL.rstrip("/") + "/"
         moved = skipped = missing = 0
         for table, pk, col in COLUMNS:
-            with connection.cursor() as cursor:
-                cursor.execute(f'SELECT {pk}, {col} FROM {table} WHERE {col} LIKE %s', [f"%{prefix}%"])
-                rows = cursor.fetchall()
+            rows = fetch_tuples(  # table/column names come from COLUMNS, never user input
+                f"SELECT {pk}, {col} FROM {table} WHERE {col} LIKE %s", [f"%{prefix}%"]
+            )
             for row_id, link in rows:
                 path = urlparse(link).path
                 if not path.startswith(prefix):
@@ -58,8 +48,7 @@ class Command(BaseCommand):
                 with open(local, "rb") as fh:
                     stored = default_storage.save(name, File(fh))
                 new_link = default_storage.url(stored)
-                with connection.cursor() as cursor:
-                    cursor.execute(f"UPDATE {table} SET {col} = %s WHERE {pk} = %s", [new_link, row_id])
+                execute(f"UPDATE {table} SET {col} = %s WHERE {pk} = %s", [new_link, row_id])
                 moved += 1
         verb = "would move" if dry_run else "moved"
         self.stdout.write(self.style.SUCCESS(f"{verb} {moved}, skipped {skipped}, missing {missing}"))
