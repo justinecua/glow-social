@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { ModeToggle } from "@/components/themes/mode-toggle";
 import { useRegisterMutation } from "@/redux/services/auth/auth";
 import { MIN_AGE, TERMS_VERSION } from "@/features/legal/legalConfig";
-import glow from "../../../assets/images/glow.png";
+import GlowLogo from "@/components/layout/GlowLogo";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -110,7 +110,7 @@ const RegisterPage = () => {
       <Card className="w-full max-w-md gap-5 bg-[var(--home-card)] py-8 sm:px-4">
         <CardHeader className="items-center gap-1 text-center">
           <Link to="/" className="mx-auto mb-2">
-            <img src={glow} className="h-20 w-20" alt="Glow" />
+            <GlowLogo className="h-20 w-20" />
           </Link>
           <CardTitle className="text-xl text-[var(--title-color)]">Create your account</CardTitle>
           <CardDescription className="text-sm">

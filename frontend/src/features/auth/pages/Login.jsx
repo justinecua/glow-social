@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import glow from "../../../assets/images/glow.png";
+import GlowLogo from "@/components/layout/GlowLogo";
 import { ModeToggle } from "@/components/themes/mode-toggle";
 import { useLoginMutation } from "../../../redux/services/auth/auth";
 import { useDispatch } from "react-redux";
@@ -46,7 +46,7 @@ const LoginPage = () => {
       <Card className="w-full max-w-md bg-[var(--home-card)] py-8 sm:px-4">
         <Link to="/" className="w-full">
           <div className="relative flex items-center justify-center -mb-3">
-            <img src={glow} className="w-20 h-20" alt="Glow" />
+            <GlowLogo className="h-20 w-20" />
           </div>
         </Link>
         <CardHeader className="text-center">
