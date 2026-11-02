@@ -12,7 +12,7 @@ const SkeletonProfile = ({ showActions = false }) => {
     <Card className="bg-[var(--home-card)] w-full h-auto sm:w-[95%] p-6 md:w-[85%] lg:w-[75%] shadow-md rounded-xl">
       <CardContent className="relative w-full p-0">
         {/* Cover Photo */}
-        <div className="relative w-full h-42 sm:h-44 md:h-50 lg:h-60 xl:h-70 rounded-lg overflow-hidden">
+        <div className="relative w-full h-44 sm:h-56 md:h-72 rounded-lg overflow-hidden">
           <Skeleton className="w-full h-full bg-[var(--button-bg-color)]" />
 
           {/* Profile Photo */}

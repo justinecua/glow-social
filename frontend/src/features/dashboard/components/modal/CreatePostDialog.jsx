@@ -4,7 +4,7 @@ import { lazy, Suspense } from "react";
 
 // Loaded on demand; emoji-picker-react is a large dependency.
 const EmojiPicker = lazy(() => import("emoji-picker-react"));
-import { SmilePlus, Image, Check, ChevronDown, ListChecks, Loader2, Plus, X } from "lucide-react";
+import { SmilePlus, Image, Check, ChevronDown, CalendarDays, ListChecks, Loader2, Plus, X } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { AUDIENCES, audienceInfo } from "@/features/growth/audience";
 import { useRef, useState, useEffect, forwardRef, useImperativeHandle } from "react";
@@ -14,6 +14,8 @@ import { useCreatePostMutation } from "@/redux/services/posts/posts";
 import { toast } from "sonner";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Avatar } from "@/features/discover/components/PersonRow";
+import GameFields from "@/features/games/GameFields";
+import { blankGame, formToGame, gameFormReady } from "@/features/games/gameUtils";
 
 const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
   const user = useStoredUser();
@@ -35,6 +37,13 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
     setPollOn(false);
     setPollOptions(["", ""]);
     setPollHours(24);
+  };
+  // Game: an open-play session people can join from the post. Polls and games don't mix.
+  const [gameOn, setGameOn] = useState(false);
+  const [gameForm, setGameForm] = useState(blankGame);
+  const resetGame = () => {
+    setGameOn(false);
+    setGameForm(blankGame);
   };
   // Who can see the post; remembers your last choice on this device.
   const [audience, setAudience] = useState(() => {
@@ -63,8 +72,8 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
   const { pathname } = useLocation();
 
   const handleSubmit = async () => {
-    if (!text.trim() && images.length === 0) return;
-    if (!pollValid) return;
+    if (!text.trim() && images.length === 0 && !gameOn) return;
+    if (!pollValid || (gameOn && !gameFormReady(gameForm))) return;
 
     try {
       // Multipart upload: photos go as real files (no base64 bloat, ~25%
@@ -77,6 +86,9 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
       if (pollOn) {
         payload.append("poll", JSON.stringify({ options: filledOptions, hours: pollHours }));
       }
+      if (gameOn) {
+        payload.append("game", JSON.stringify(formToGame(gameForm)));
+      }
 
       const response = await createPost(payload).unwrap();
       toast("Post created successfully!");
@@ -84,6 +96,7 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
       setText("");
       setImages([]);
       resetPoll();
+      resetGame();
       setPrompt(null);
       setOpen(false);
       onPostCreated?.(response);
@@ -156,9 +169,10 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
 
   const MAX = 800; // matches the server's caption limit
   const canPost =
-    (text.trim().length > 0 || images.length > 0) &&
+    (text.trim().length > 0 || images.length > 0 || gameOn) &&
     (!pollOn || text.trim().length > 0) &&
     pollValid &&
+    (!gameOn || gameFormReady(gameForm)) &&
     text.length <= MAX &&
     !isLoading;
   const toolBtn =
@@ -230,10 +244,10 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
                   handleSubmit();
                 }
               }}
-              placeholder={pollOn ? "Ask a question…" : "What's glowing today?"}
+              placeholder={pollOn ? "Ask a question…" : gameOn ? "Say something about the game (optional)" : "What's glowing today?"}
               aria-label="Post text"
-              rows={previews.length || pollOn ? 2 : 4}
-              className={`mt-3 w-full ${previews.length || pollOn ? "min-h-16" : "min-h-44"} resize-none border-none bg-transparent text-[15px] leading-relaxed text-foreground shadow-none outline-none placeholder:text-[var(--color-subtitle)] [overflow-wrap:anywhere]`}
+              rows={previews.length || pollOn || gameOn ? 2 : 4}
+              className={`mt-3 w-full ${previews.length || pollOn || gameOn ? "min-h-16" : "min-h-44"} resize-none border-none bg-transparent text-[15px] leading-relaxed text-foreground shadow-none outline-none placeholder:text-[var(--color-subtitle)] [overflow-wrap:anywhere]`}
             />
 
             {previews.length > 0 && (
@@ -328,6 +342,11 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
                 </div>
               </div>
             )}
+            {gameOn && (
+              <div className="mt-2">
+                <GameFields form={gameForm} onChange={setGameForm} onRemove={resetGame} />
+              </div>
+            )}
           </div>
         </div>
 
@@ -356,12 +375,14 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
           <button
             type="button"
             onClick={() => (pollOn ? resetPoll() : setPollOn(true))}
-            disabled={images.length > 0}
+            disabled={images.length > 0 || gameOn}
             className={`${toolBtn} disabled:cursor-not-allowed disabled:opacity-40 ${pollOn ? "bg-[color-mix(in_srgb,var(--button-color-bg)_12%,transparent)]" : ""}`}
             title={
               images.length > 0
                 ? "Remove photos to add a poll"
-                : pollOn
+                : gameOn
+                  ? "Remove the game to add a poll"
+                  : pollOn
                   ? "Remove poll"
                   : "Add a poll"
             }
@@ -369,6 +390,18 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
             aria-pressed={pollOn}
           >
             <ListChecks className="h-5 w-5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => (gameOn ? resetGame() : setGameOn(true))}
+            disabled={pollOn}
+            className={`${toolBtn} disabled:cursor-not-allowed disabled:opacity-40 ${gameOn ? "bg-[color-mix(in_srgb,var(--button-color-bg)_12%,transparent)]" : ""}`}
+            title={pollOn ? "Remove the poll to add a game" : gameOn ? "Remove game" : "Host a game"}
+            aria-label="Game"
+            aria-pressed={gameOn}
+          >
+            <CalendarDays className="h-5 w-5" />
           </button>
 
           <div ref={emojiPickerRef} className="relative">

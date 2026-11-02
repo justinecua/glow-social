@@ -4,6 +4,7 @@ import pytz
 from django.core.cache import cache
 
 from friends.queries import friend_ids
+from games.queries import attach_games
 from GlowProject.db import execute, fetch_all, fetch_column, fetch_one, fetch_tuples
 
 from .polls import attach_polls
@@ -65,7 +66,7 @@ def find_posts(where="", params=(), order='p."dateTime" DESC', limit=12,
     where = f"{where} AND {vis}" if where else f"WHERE {vis}"
     sql = f"{post_select('%s')} {where} ORDER BY {order} LIMIT %s"
     rows = fetch_all(sql, (viewer_id, *params, *vis_params, limit))
-    return attach_polls(clean_posts(rows, request), viewer_id)
+    return attach_games(attach_polls(clean_posts(rows, request), viewer_id), viewer_id)
 
 
 def trending(request, days=30, limit=12):  # most engaged posts recently (glows count double), newest first on ties
@@ -364,7 +365,7 @@ def feed(request, viewer_id=None, offset=0, limit=7, seed=None, anchor=None):  #
         page += older_ids(viewer_id, anchor, ranked, older_offset, limit - len(page))
 
     rows = hydrate(page, request, viewer_id)
-    return {"results": attach_polls(spread_authors(clean_posts(rows, request)), viewer_id)}
+    return {"results": attach_games(attach_polls(spread_authors(clean_posts(rows, request)), viewer_id), viewer_id)}
 
 
 def mark_seen(viewer_id, post_ids):  # these posts were on the viewer's screen
@@ -466,7 +467,7 @@ def posts_by_user(account_id, request, viewer_id=None, limit=PROFILE_PAGE, befor
     last = rows[-1] if rows else None
     next_cursor = (encode_cursor(last["dateTime"], last["id"])
                    if more and last and isinstance(last.get("dateTime"), datetime) else None)
-    results = attach_polls(clean_posts(rows, request), viewer_id)
+    results = attach_games(attach_polls(clean_posts(rows, request), viewer_id), viewer_id)
     return {
         "results": results,
         "next": next_cursor,
