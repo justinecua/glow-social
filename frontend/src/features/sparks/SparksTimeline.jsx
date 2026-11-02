@@ -195,7 +195,7 @@ const Ember = ({ g, now }) => {
 const SparksTimeline = () => {
   const user = useStoredUser();
   const me = user?.user;
-  const { data } = useGetSparksQuery(undefined, { skip: !user });
+  const { data, isLoading } = useGetSparksQuery(undefined, { skip: !user });
   const sparks = useMemo(() => data?.sparks ?? [], [data]);
   const unseen = useMemo(() => sparks.filter((s) => !s.seen), [sparks]);
   const scroller = useRef(null);
@@ -308,7 +308,14 @@ const SparksTimeline = () => {
           </span>
         </button>
 
-        {groups.length === 0 ? (
+        {isLoading || !data ? (
+          [0, 1, 2].map((i) => (
+            <span key={i} className="flex w-[72px] shrink-0 flex-col items-center gap-1" aria-hidden>
+              <span className="block animate-pulse rounded-full bg-[var(--photo-bg)]" style={{ width: SIZE, height: SIZE }} />
+              <span className="h-2.5 w-10 animate-pulse rounded bg-[var(--photo-bg)]" />
+            </span>
+          ))
+        ) : groups.length === 0 ? (
           <p className="self-center pb-5 text-sm leading-snug text-[var(--color-subtitle)]">
             Nothing's lit yet today.
             <br />

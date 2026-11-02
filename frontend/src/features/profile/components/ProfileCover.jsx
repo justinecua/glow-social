@@ -36,7 +36,7 @@ const ProfileCover = ({ item }) => {
     <div className="relative">
       {/* Cover */}
       <div
-        className="relative h-36 w-full overflow-hidden rounded-xl sm:h-44 md:h-52"
+        className="relative h-44 w-full overflow-hidden rounded-xl sm:h-56 md:h-72"
         style={hasCover ? undefined : { background: EMPTY_COVER }}
       >
         {hasCover && (
@@ -63,7 +63,7 @@ const ProfileCover = ({ item }) => {
 
       {/* Avatar, overlapping the cover */}
       <div
-        className="absolute -bottom-12 left-4 h-24 w-24 overflow-hidden rounded-full border-4 border-[var(--home-card)] bg-[var(--photo-bg)] sm:-bottom-14 sm:left-6 sm:h-28 sm:w-28"
+        className="absolute -bottom-14 left-4 h-28 w-28 overflow-hidden rounded-full border-4 border-[var(--home-card)] bg-[var(--photo-bg)] sm:-bottom-[4.5rem] sm:left-6 sm:h-36 sm:w-36 md:-bottom-20 md:h-40 md:w-40"
         style={ringStyle}
         role={ring ? "button" : undefined}
         aria-label={ring ? "View sparks" : undefined}

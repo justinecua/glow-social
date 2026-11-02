@@ -145,13 +145,13 @@ const ProfileName = ({ item, id }) => {
   );
 
   const isNotAuthenticated = () => {
-    return <div className="px-4 pt-16 sm:px-6 sm:pt-[4.5rem]">{nameBlock}</div>;
+    return <div className="px-4 pt-[4.5rem] sm:px-6 sm:pt-[5.5rem] md:pt-24">{nameBlock}</div>;
   };
 
   const isAuthenticated = () => {
     return (
       <>
-        <div className="flex min-h-14 flex-wrap items-start justify-end gap-2 px-4 pt-3 pl-32 sm:min-h-16 sm:px-6 sm:pl-40 [&_button]:h-9 [&_button]:rounded-full [&_button]:px-4">
+        <div className="flex min-h-16 flex-wrap items-start justify-end gap-2 px-4 pt-3 pl-36 sm:min-h-[4.5rem] sm:px-6 sm:pl-48 md:min-h-20 md:pl-52 [&_button]:h-9 [&_button]:rounded-full [&_button]:px-4">
           {isOwnProfile && (
             <>
               <Button

@@ -79,6 +79,16 @@ def export_user_data(user):  # GDPR / Data Privacy Act access request
         """,
         a,
     )
+    data["games"] = rows(
+        """
+        SELECT g.title, g.venue, g.starts_at, p.status, g.host_id = %(a)s AS hosted
+        FROM glow.glow.games_playsessionplayer p
+        JOIN glow.glow.games_playsession g ON g.id = p.session_id
+        WHERE p.account_id = %(a)s
+        ORDER BY g.starts_at
+        """,
+        a,
+    )
     data["poll_votes"] = rows(
         """
         SELECT p.post_id, o.text AS answer, v.created_at
@@ -177,10 +187,13 @@ def _media_links(account_id):  # every uploaded file the account owns
 MY_POSTS = "(SELECT id FROM glow.glow.posts_post WHERE account_id = %(a)s)"
 MY_POLLS = f"(SELECT id FROM glow.glow.posts_poll WHERE post_id IN {MY_POSTS})"
 MY_SPARKS = "(SELECT id FROM glow.glow.sparks_spark WHERE account_id = %(a)s)"
+MY_GAMES = "(SELECT id FROM glow.glow.games_playsession WHERE host_id = %(a)s)"
 MY_NOTES = "(SELECT id FROM glow.glow.kudos_glownote WHERE sender_id = %(a)s OR recipient_id = %(a)s)"
 
 DELETE_ACCOUNT = [  # children before parents; FKs are NO ACTION so a missed table aborts the whole delete
     f"UPDATE glow.glow.posts_poll SET correct_option_id = NULL WHERE id IN {MY_POLLS}",
+    f"DELETE FROM glow.glow.games_playsessionplayer WHERE account_id = %(a)s OR session_id IN {MY_GAMES}",
+    "DELETE FROM glow.glow.games_playsession WHERE host_id = %(a)s",
     f"DELETE FROM glow.glow.posts_pollvote WHERE account_id = %(a)s OR poll_id IN {MY_POLLS}",
     f"DELETE FROM glow.glow.posts_polloption WHERE poll_id IN {MY_POLLS}",
     f"DELETE FROM glow.glow.posts_poll WHERE id IN {MY_POLLS}",

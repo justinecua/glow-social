@@ -103,6 +103,7 @@ class GlobalConsumer(AsyncWebsocketConsumer):
     chat_read = forward
     chat_typing = forward
     chat_conversation = forward
+    games_updated = forward  # a game's roster or details changed
 
     async def new_notification(self, event):
         await self.send(text_data=json.dumps({
