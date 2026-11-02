@@ -89,6 +89,10 @@ def export_user_data(user):  # GDPR / Data Privacy Act access request
         """,
         a,
     )
+    data["profile_design"] = rows(
+        "SELECT published, draft, updated_at FROM glow.glow.accounts_profiledesign WHERE account_id = %(a)s",
+        a,
+    )
     data["poll_votes"] = rows(
         """
         SELECT p.post_id, o.text AS answer, v.created_at
@@ -224,6 +228,7 @@ DELETE_ACCOUNT = [  # children before parents; FKs are NO ACTION so a missed tab
     "DELETE FROM glow.glow.friends_friend WHERE user_id = %(a)s OR friend_id = %(a)s",
     "DELETE FROM glow.glow.notifications_notification WHERE notif_to_id = %(a)s OR notif_from_id = %(a)s",
     "UPDATE glow.glow.accounts_account SET invited_by_id = NULL WHERE invited_by_id = %(a)s",
+    "DELETE FROM glow.glow.accounts_profiledesign WHERE account_id = %(a)s",
     "DELETE FROM glow.glow.accounts_account WHERE id = %(a)s",
 ]
 

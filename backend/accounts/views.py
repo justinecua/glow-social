@@ -8,11 +8,13 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 
 from GlowProject.throttles import AuthThrottle, WriteThrottle
+from posts.visibility import viewer_account_id
 
 from .account_data import delete_user_account, export_user_data
 from .api.decorators import forgot_password_decorator, register_decorator
 from .auth_utils import current_account_id, make_ws_ticket
 from .legal import MIN_AGE, TERMS_VERSION
+from .profile_design import DesignError, my_design, preview_blocks, public_design, save_design
 from .profile_edit import ProfileError, get_account, update_profile
 from .queries import (
     count_glows_received,
@@ -220,6 +222,37 @@ class UpdateMyProfile(APIView):
         except ProfileError as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(data)
+
+
+class ProfileDesignView(APIView):  # GET the published design of any profile, plus what its blocks need
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request, profile_id):
+        return Response(public_design(profile_id, viewer_account_id(request), request))
+
+
+class MyProfileDesign(APIView):  # GET your draft and unlocks, PUT saves the draft (and publishes it with "publish": true)
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request):
+        return Response(my_design(current_account_id(request)))
+
+    def put(self, request):
+        try:
+            data = save_design(current_account_id(request), request.data.get("design"), bool(request.data.get("publish")))
+        except DesignError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(data)
+
+
+class PreviewDesignBlocks(APIView):  # POST unsaved blocks, get back what they'd show (pinned post, friend, photos)
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request):
+        try:
+            return Response(preview_blocks(current_account_id(request), request.data, request))
+        except DesignError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ExportMyData(APIView):

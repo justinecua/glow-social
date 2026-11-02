@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/themes/mode-toggle";
 import { toast } from "sonner";
-import glow from "../../../assets/images/glow.png";
+import GlowLogo from "@/components/layout/GlowLogo";
 import { Input } from "@/components/ui/input";
 
 const ResetPassword = () => {
@@ -49,7 +49,7 @@ const ResetPassword = () => {
       <Card className="w-full max-w-sm bg-[var(--home-card)]">
         <Link to="/" className="w-full">
           <div className="relative flex items-center justify-center -mb-5">
-            <img src={glow} className="w-16 h-16" alt="" />
+            <GlowLogo className="h-16 w-16" />
           </div>
         </Link>
         <CardHeader className="text-center">

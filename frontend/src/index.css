@@ -91,6 +91,15 @@
   --input-login: #2f2e2f;
   --button-color-bg: #2442de;
   --button-color-bg-hover: #1b39d1;
+  --wordmark-bottom: #1b39d1;
+  --wordmark-top: #8a9ef6;
+  --mark-layer: #2442de;
+  --mark-layer-opacity: 0.62;
+  --mark-outer: #2442de;
+  --mark-outer-opacity: 0.22;
+  --mark-core: #1b39d1;
+  --wordmark-glow: none;
+  --wordmark-glow-strong: none;
   --button-color-text: #2f2e2f;
   --text-color-dateTime: #676766;
   --photo-bg: #f1f1f1;
@@ -138,6 +147,15 @@
   --input-login: #2f2e2f;
   --button-color-bg: #2442de;
   --button-color-bg-hover: #1632c0;
+  --wordmark-bottom: #4a6bff;
+  --wordmark-top: #ffffff;
+  --mark-layer: #98a9f2; /* halfway between the white outer diamond and the blue core */
+  --mark-layer-opacity: 1;
+  --mark-outer: #ffffff;
+  --mark-outer-opacity: 0.9;
+  --mark-core: #4a6bff;
+  --wordmark-glow: drop-shadow(0 0 10px rgba(74, 107, 255, 0.25));
+  --wordmark-glow-strong: drop-shadow(0 0 14px rgba(74, 107, 255, 0.35));
   --button-color-text: #ffffff;
   --text-color-dateTime: #676766;
   --photo-bg: #181818;
@@ -167,6 +185,46 @@ body,
   font-family: "Croissant One", serif;
   font-size: 2rem;
   font-weight: 600;
+}
+
+.glow-wordmark {
+  background-image: linear-gradient(to top, var(--wordmark-bottom) 0%, var(--wordmark-bottom) 45%, var(--wordmark-top) 100%); /* solid blue base, then rises like the logo's layers */
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  padding-bottom: 0.1em; /* keeps the g's tail inside the painted area */
+}
+
+.glow-rise path {
+  transform-box: fill-box;
+  transform-origin: 50% 100%; /* every layer grows up from the shared bottom point */
+  transition: transform 300ms ease-out;
+}
+.glow-rise .glow-rise-core { animation: glow-rise-in 450ms ease-out backwards; }
+.glow-rise .glow-rise-mid { animation: glow-rise-in 450ms ease-out 150ms backwards; }
+.glow-rise .glow-rise-outer { animation: glow-rise-in 500ms ease-out 300ms backwards; }
+.group:hover .glow-rise .glow-rise-mid { transform: translateY(-4%); }
+.group:hover .glow-rise .glow-rise-outer { transform: translateY(-8%); }
+
+.glow-lockup {
+  filter: var(--wordmark-glow); /* light mode: none; dark mode: a soft blue halo */
+  animation: glow-breathe 4s ease-in-out infinite;
+}
+
+@keyframes glow-breathe {
+  0%, 100% { filter: var(--wordmark-glow); }
+  50% { filter: var(--wordmark-glow-strong); }
+}
+
+@keyframes glow-rise-in {
+  from { opacity: 0; transform: scale(0.6) translateY(12%); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glow-rise path { animation: none; transition: none; }
+  .glow-lockup { animation: none; }
+  .group:hover .glow-rise path { transform: none; }
 }
 
 [data-sonner-toast] {
@@ -299,3 +357,83 @@ html body[data-scroll-locked] {
 /* Horizontal strips (e.g. the Sparks timeline): scroll without a bar. */
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* ---------- Profile design (features/profile/design) ---------- */
+.pf-page {
+  background-color: var(--pf-page, transparent);
+  position: relative;
+  isolation: isolate;
+}
+.pf-page[data-bg="dots"] {
+  background-image: radial-gradient(color-mix(in srgb, var(--color-subtitle) 35%, transparent) 1.2px, transparent 1.6px);
+  background-size: 18px 18px;
+}
+.pf-page[data-bg="grid"] {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--color-subtitle) 16%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--color-subtitle) 16%, transparent) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+.pf-page[data-bg="court"] {
+  background-image:
+    linear-gradient(90deg, transparent calc(50% - 1px), color-mix(in srgb, var(--button-color-bg) 22%, transparent) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(0deg, transparent 0 32%, color-mix(in srgb, var(--button-color-bg) 14%, transparent) 32% calc(32% + 2px), transparent calc(32% + 2px) 68%, color-mix(in srgb, var(--button-color-bg) 14%, transparent) 68% calc(68% + 2px), transparent calc(68% + 2px));
+}
+.pf-blur-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-size: cover;
+  background-position: center;
+  filter: blur(40px) saturate(1.2);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.pf-card { border-radius: var(--pf-radius, 14px); }
+.pf-page[data-card="shadow"] .pf-card { box-shadow: 0 10px 30px -12px rgb(0 0 0 / 0.25); border-color: transparent; }
+.pf-page[data-card="outline"] .pf-card { box-shadow: none; border: 1.5px solid color-mix(in srgb, var(--button-color-bg) 35%, transparent); }
+.pf-page[data-card="flat"] .pf-card { box-shadow: none; }
+.pf-page[data-card="glass"] .pf-card {
+  background: color-mix(in srgb, var(--home-card) 72%, transparent);
+  backdrop-filter: blur(14px);
+  border: 1px solid color-mix(in srgb, var(--title-color) 10%, transparent);
+  box-shadow: 0 8px 30px -14px rgb(0 0 0 / 0.3);
+}
+
+.pf-cover-drift { background-size: 220% 220% !important; animation: pf-drift 14s ease-in-out infinite alternate; }
+.pf-cover-pan img { animation: pf-pan 24s ease-in-out infinite alternate; }
+@keyframes pf-drift { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
+@keyframes pf-pan { from { transform: scale(1.12) translateX(-3%); } to { transform: scale(1.12) translateX(3%); } }
+
+.pf-frame-accent { box-shadow: 0 0 0 4px var(--button-color-bg); }
+.pf-frame-glow { box-shadow: 0 0 0 3px var(--button-color-bg), 0 0 28px 4px color-mix(in srgb, var(--button-color-bg) 55%, transparent); }
+.pf-frame-double { box-shadow: 0 0 0 3px var(--home-card), 0 0 0 6px var(--button-color-bg); }
+.pf-frame-sparks { box-shadow: 0 0 0 3px #f5a524, 0 0 22px 2px rgb(245 165 36 / 0.5); }
+.pf-frame-rising { background: linear-gradient(to top, #2442de, #a9b8ff 60%, #ffffff); padding: 4px; }
+.pf-frame-anniversary { background: linear-gradient(135deg, #b7791f, #f6e27a 45%, #b7791f); padding: 4px; }
+.pf-frame-holiday { background: repeating-conic-gradient(#dc2626 0 15deg, #ffffff 15deg 30deg, #15803d 30deg 45deg, #ffffff 45deg 60deg); padding: 4px; }
+
+.pf-name-gradient {
+  background: linear-gradient(90deg, var(--button-color-bg), #ec4899);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.pf-name-gold {
+  background: linear-gradient(180deg, #f6e27a, #b7791f 70%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.pf-name-swash {
+  text-decoration: underline;
+  text-decoration-color: var(--button-color-bg);
+  text-decoration-thickness: 0.18em;
+  text-underline-offset: 0.12em;
+  text-decoration-skip-ink: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-cover-drift, .pf-cover-pan img { animation: none; }
+}
