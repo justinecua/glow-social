@@ -10,11 +10,13 @@ import { useWebSocket } from "@/utils/WebSocketContext";
 import { useCheckUserFriendRequestQuery } from "@/redux/services/friends/friends";
 import SendGlowDialog from "@/features/glows/SendGlowDialog";
 import { useNavigate } from "react-router-dom";
-import { MessageCircle, Pencil } from "lucide-react";
+import { MessageCircle, Palette, Pencil } from "lucide-react";
 import EditProfileDialog from "./EditProfileDialog";
 import { useStartConversationMutation } from "@/redux/services/messages";
 
-const ProfileName = ({ item, id }) => {
+const ProfileName = ({ item, id, design, look, asVisitor = false, onDesign, designOpening = false }) => {
+  const layout = design.header_layout === "centered" || design.header_layout === "no_cover" ? "center" : design.header_layout === "split" ? "split" : "classic";
+  const nameEffect = design.name_effect === "none" ? "" : `pf-name-${design.name_effect}`;
   const user = useStoredUser();
   const profile_id = id;
   const socketRef = useWebSocket();
@@ -132,27 +134,37 @@ const ProfileName = ({ item, id }) => {
     );
   };
 
+  const mood = design.mood?.emoji || design.mood?.text ? design.mood : null;
   const nameBlock = (
     <div className="min-w-0">
-      <h1 className="truncate text-xl font-bold leading-tight sm:text-2xl">
-        {displayName}
+      <h1
+        className={`flex items-center gap-2 text-xl font-bold leading-tight sm:text-2xl ${
+          layout === "center" ? "justify-center" : ""
+        } ${look.serif ? "font-serif" : ""}`}
+      >
+        <span className={`truncate pb-[0.08em] ${nameEffect}`}>{displayName}</span>
+        {design.name_badge && <span aria-hidden="true">{design.name_badge}</span>}
       </h1>
-      <p className="mt-0.5 flex items-center gap-2 text-sm text-[var(--color-subtitle)]">
+      <p
+        className={`mt-0.5 flex flex-wrap items-center gap-2 text-sm text-[var(--color-subtitle)] ${
+          layout === "center" ? "justify-center" : ""
+        }`}
+      >
         @{item?.username}
         {item?.is_bot && <AutomatedBadge />}
+        {mood && (
+          <span className="rounded-full bg-[color-mix(in_srgb,var(--button-color-bg)_12%,transparent)] px-2.5 py-0.5 text-xs font-medium text-[var(--title-color)]">
+            {mood.emoji} {mood.text}
+          </span>
+        )}
       </p>
     </div>
   );
 
-  const isNotAuthenticated = () => {
-    return <div className="px-4 pt-[4.5rem] sm:px-6 sm:pt-[5.5rem] md:pt-24">{nameBlock}</div>;
-  };
-
-  const isAuthenticated = () => {
-    return (
-      <>
-        <div className="flex min-h-16 flex-wrap items-start justify-end gap-2 px-4 pt-3 pl-36 sm:min-h-[4.5rem] sm:px-6 sm:pl-48 md:min-h-20 md:pl-52 [&_button]:h-9 [&_button]:rounded-full [&_button]:px-4">
-          {isOwnProfile && (
+  const showOwnActions = isOwnProfile && !asVisitor;
+  const actions = !user || (isOwnProfile && asVisitor) ? null : (
+    <>
+          {showOwnActions && (
             <>
               <Button
                 variant="outline"
@@ -162,6 +174,16 @@ const ProfileName = ({ item, id }) => {
                 <Pencil className="h-4 w-4" />
                 Edit profile
               </Button>
+              {onDesign && (
+                <Button
+                  onClick={onDesign}
+                  disabled={designOpening}
+                  className="cursor-pointer flex items-center gap-2 bg-[var(--button-color-bg)] text-white hover:opacity-90"
+                >
+                  {designOpening ? <Loader2 className="h-4 w-4 animate-spin" /> : <Palette className="h-4 w-4" />}
+                  {designOpening ? "Opening…" : "Design"}
+                </Button>
+              )}
               <EditProfileDialog
                 open={editOpen}
                 onOpenChange={setEditOpen}
@@ -320,21 +342,42 @@ const ProfileName = ({ item, id }) => {
               )}
             </>
           )}
-        </div>
-        <div className="px-4 pt-2 sm:px-6">{nameBlock}</div>
-      </>
+    </>
+  );
+
+
+  const buttons = "[&_button]:h-9 [&_button]:rounded-full [&_button]:px-4";
+
+  if (layout === "center") {
+    return (
+      <div className="flex flex-col items-center px-4 pt-[4.5rem] text-center sm:px-6 sm:pt-[5.5rem] md:pt-24">
+        {nameBlock}
+        {actions && <div className={`mt-3 flex flex-wrap justify-center gap-2 ${buttons}`}>{actions}</div>}
+      </div>
     );
-  };
+  }
 
-  const authenticated = () => {
-    if (user) {
-      return isAuthenticated();
-    } else {
-      return isNotAuthenticated();
-    }
-  };
+  if (layout === "split") {
+    return (
+      <div className="flex min-h-16 flex-wrap items-start justify-between gap-3 px-4 pt-3 pl-36 sm:min-h-[4.5rem] sm:px-6 sm:pl-48 md:min-h-20 md:pl-52">
+        {nameBlock}
+        {actions && <div className={`flex flex-wrap gap-2 ${buttons}`}>{actions}</div>}
+      </div>
+    );
+  }
 
-  return authenticated();
+  if (!actions) {
+    return <div className="px-4 pt-[4.5rem] sm:px-6 sm:pt-[5.5rem] md:pt-24">{nameBlock}</div>;
+  }
+
+  return (
+    <>
+      <div className={`flex min-h-16 flex-wrap items-start justify-end gap-2 px-4 pt-3 pl-36 sm:min-h-[4.5rem] sm:px-6 sm:pl-48 md:min-h-20 md:pl-52 ${buttons}`}>
+        {actions}
+      </div>
+      <div className="px-4 pt-2 sm:px-6">{nameBlock}</div>
+    </>
+  );
 };
 
 export default ProfileName;

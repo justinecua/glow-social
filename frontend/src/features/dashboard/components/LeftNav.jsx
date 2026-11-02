@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import GlowLogo from "@/components/layout/GlowLogo";
 import { Link, useLocation } from "react-router-dom";
 import { Bell, PanelLeftClose, PanelLeftOpen, Plus, SquarePlus } from "lucide-react";
 import { useSidebars } from "@/components/layout/useSidebars";
@@ -12,24 +13,19 @@ import UnreadBadge from "@/features/messages/UnreadBadge";
 import { guestLinks, isActive, memberLinks } from "@/components/layout/navItems";
 
 const rowClass = (active, collapsed = false) =>
-  `group flex w-full items-center gap-3 rounded-lg py-2 text-sm transition-colors cursor-pointer ${
-    collapsed ? "justify-center px-0" : "px-2"
+  `group flex w-full items-center gap-3 rounded-lg py-3 text-sm transition-colors cursor-pointer ${
+    collapsed ? "justify-center px-0" : "px-3"
   } ${
     active
-      ? // Brand-blue tint (works in light and dark) instead of grey
-        "bg-[color-mix(in_srgb,var(--button-color-bg)_10%,transparent)] font-semibold text-[var(--button-color-bg)] dark:bg-[color-mix(in_srgb,var(--button-color-bg)_22%,transparent)] dark:text-white"
-      : "hover:bg-[var(--button-hover-bg-color)] hover:text-[var(--button-text-color)] dark:hover:bg-[var(--button-bg-color)] dark:hover:text-white"
+      ? "font-semibold text-[var(--button-color-bg)] dark:text-white" // quiet: colour only, so the logo stays the loudest thing
+      : "text-[var(--color-subtitle)] hover:bg-[var(--button-hover-bg-color)] hover:text-[var(--title-color)] dark:hover:bg-[var(--button-bg-color)] dark:hover:text-white"
   }`;
 
 const IconBox = ({ icon: Icon, active, children }) => (
   <span
-    className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition-colors ${
-      active
-        ? "border-transparent bg-[var(--button-color-bg)] text-white shadow-[0_2px_10px_color-mix(in_srgb,var(--button-color-bg)_35%,transparent)]"
-        : ""
-    }`}
+    className="relative flex h-6 w-6 shrink-0 items-center justify-center"
   >
-    <Icon className="h-[1.1rem] w-[1.1rem]" />
+    <Icon className="h-[22px] w-[22px]" strokeWidth={active ? 2.25 : 1.75} />
     {children}
   </span>
 );
@@ -44,7 +40,7 @@ const NavLinkRow = ({ to, label, icon, pathname, badge, collapsed = false }) => 
       title={collapsed ? label : undefined}
     >
       <IconBox icon={icon} active={active}>
-        {badge && <span className="absolute -top-2 -right-2">{badge}</span>}
+        {badge && <span className="absolute -top-0.5 -right-0.5">{badge}</span>}
       </IconBox>
       <span className={collapsed ? "sr-only" : ""}>{label}</span>
     </Link>
@@ -55,9 +51,22 @@ const Brand = ({ collapsed = false }) => (
   <Link
     to="/"
     aria-label="Glow home"
-    className={`mb-6 flex h-[50px] items-center ${collapsed ? "justify-center" : "px-2"}`}
+    className={`group mb-6 flex items-center pt-2 ${collapsed ? "justify-center" : "px-2"}`}
   >
-    <span className="title-font text-xl text-[var(--title-color)]">{collapsed ? "g" : "glow"}</span>
+    {collapsed ? (
+      <GlowLogo variant="mark" animated className="glow-lockup h-10 w-10" title="" />
+    ) : (
+      <span className="title-font glow-lockup flex items-baseline !text-[2.4rem] leading-none">
+        <span className="glow-wordmark">gl</span>
+        <GlowLogo
+          variant="mark"
+          animated
+          className="mx-[0.02em] h-[0.95em] w-[0.95em] shrink-0 self-center translate-y-[0.02em]"
+          title=""
+        />
+        <span className="glow-wordmark">w</span>
+      </span>
+    )}
   </Link>
 );
 
@@ -157,7 +166,7 @@ const LeftNav = () => {
               title={collapsed ? "Notifications" : undefined}
             >
               <IconBox icon={Bell} active={showNotifications}>
-                <span className="absolute -top-2 -right-2">
+                <span className="absolute -top-0.5 -right-0.5">
                   <NotificationsCount />
                 </span>
               </IconBox>
@@ -180,7 +189,7 @@ const LeftNav = () => {
             onClick={() => dialogRef.current?.open()}
             aria-label="Create post"
             title={collapsed ? "Create post" : undefined}
-            className={`mt-6 flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-[var(--button-color-bg)] text-sm font-semibold text-white shadow-[0_4px_14px_color-mix(in_srgb,var(--button-color-bg)_35%,transparent)] transition-opacity hover:opacity-90 ${
+            className={`mt-6 flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-[color-mix(in_srgb,var(--button-color-bg)_10%,transparent)] text-sm font-semibold text-[var(--button-color-bg)] transition-colors hover:bg-[color-mix(in_srgb,var(--button-color-bg)_16%,transparent)] dark:bg-[color-mix(in_srgb,var(--button-color-bg)_24%,transparent)] dark:text-white ${
               collapsed ? "mx-auto h-11 w-11" : "w-full py-3"
             }`}
           >

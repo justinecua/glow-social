@@ -6,6 +6,7 @@ import { ModeToggle } from "@/components/themes/mode-toggle";
 import { useSparkRing } from "@/features/sparks/SparkRing";
 import { openSparks } from "@/redux/services/sparks";
 import { accountPhoto } from "@/features/posts/botAccounts";
+import { presetCover } from "../design/designStyle";
 
 // Shown when there's no cover photo: a soft brand glow instead of a flat grey box.
 const EMPTY_COVER =
@@ -13,7 +14,16 @@ const EMPTY_COVER =
   "radial-gradient(120% 140% at 100% 100%, color-mix(in srgb, #ff5fa2 30%, transparent) 0%, transparent 55%)," +
   "var(--photo-bg)";
 
-const ProfileCover = ({ item }) => {
+const ACCENT_COVER =
+  "linear-gradient(135deg, color-mix(in srgb, var(--button-color-bg) 75%, transparent), color-mix(in srgb, var(--button-color-bg) 18%, transparent))";
+
+const HEIGHTS = {
+  compact: "h-28 sm:h-36 md:h-44",
+  normal: "h-44 sm:h-56 md:h-72",
+  tall: "h-56 sm:h-72 md:h-96",
+};
+
+const ProfileCover = ({ item, design, look }) => {
   const [imgError, setImgError] = useState(false);
   const [coverError, setCoverError] = useState(false);
 
@@ -29,17 +39,25 @@ const ProfileCover = ({ item }) => {
       }
     : undefined;
 
-  const hasCover = item?.cover_photo && !coverError;
+  const noCover = design.header_layout === "no_cover";
+  const centered = noCover || design.header_layout === "centered";
+  const preset = presetCover(design);
+  const showPhoto = !noCover && !preset && item?.cover_photo && !coverError;
+  const coverBg = noCover ? ACCENT_COVER : preset ?? look.themeCover ?? EMPTY_COVER;
   const photo = accountPhoto(item);
+  const shape = design.avatar_shape === "rounded" ? "rounded-[28%]" : "rounded-full";
+  const frame = !ring && design.avatar_frame !== "none" ? `pf-frame-${design.avatar_frame}` : "";
 
   return (
     <div className="relative">
       {/* Cover */}
       <div
-        className="relative h-44 w-full overflow-hidden rounded-xl sm:h-56 md:h-72"
-        style={hasCover ? undefined : { background: EMPTY_COVER }}
+        className={`relative w-full overflow-hidden rounded-[var(--pf-radius)] ${HEIGHTS[noCover ? "compact" : design.cover_height]} ${
+          design.cover_animation === "drift" && !showPhoto ? "pf-cover-drift" : ""
+        } ${design.cover_animation === "pan" && showPhoto ? "pf-cover-pan" : ""}`}
+        style={showPhoto ? undefined : { background: coverBg }}
       >
-        {hasCover && (
+        {showPhoto && (
           <img
             src={item.cover_photo}
             alt=""
@@ -61,20 +79,26 @@ const ProfileCover = ({ item }) => {
         </div>
       </div>
 
-      {/* Avatar, overlapping the cover */}
+      {/* Avatar, overlapping the cover; the frame wraps it */}
       <div
-        className="absolute -bottom-14 left-4 h-28 w-28 overflow-hidden rounded-full border-4 border-[var(--home-card)] bg-[var(--photo-bg)] sm:-bottom-[4.5rem] sm:left-6 sm:h-36 sm:w-36 md:-bottom-20 md:h-40 md:w-40"
-        style={ringStyle}
-        role={ring ? "button" : undefined}
-        aria-label={ring ? "View sparks" : undefined}
-        onClick={ring ? () => openSparks({ authorId: Number(item.id) }) : undefined}
+        className={`absolute -bottom-14 h-28 w-28 sm:-bottom-[4.5rem] sm:h-36 sm:w-36 md:-bottom-20 md:h-40 md:w-40 ${shape} ${frame} ${
+          centered ? "left-1/2 -translate-x-1/2" : "left-4 sm:left-6"
+        }`}
       >
-        <img
-          src={imgError || !photo ? NoProfile : photo}
-          alt={item?.username ?? ""}
-          className="h-full w-full object-cover"
-          onError={() => setImgError(true)}
-        />
+        <div
+          className={`h-full w-full overflow-hidden border-4 border-[var(--home-card)] bg-[var(--photo-bg)] ${shape}`}
+          style={ringStyle}
+          role={ring ? "button" : undefined}
+          aria-label={ring ? "View sparks" : undefined}
+          onClick={ring ? () => openSparks({ authorId: Number(item.id) }) : undefined}
+        >
+          <img
+            src={imgError || !photo ? NoProfile : photo}
+            alt={item?.username ?? ""}
+            className="h-full w-full object-cover"
+            onError={() => setImgError(true)}
+          />
+        </div>
       </div>
     </div>
   );

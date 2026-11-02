@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/glow.png" />
+    <link rel="icon" type="image/svg+xml" href="/glow.svg" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/glow.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#2442de" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -16,13 +19,13 @@
       href="https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,100..900;1,100..900&display=swap"
       rel="stylesheet"
     />
-    <title>Glow</title>
+    <title>glow</title>
     <script>
       // Apply the theme before first paint to avoid a light flash on reload.
       // Must match storageKey/defaultTheme in theme-provider.jsx.
       (function () {
         try {
-          var t = localStorage.getItem("vite-ui-theme") || "system";
+          var t = localStorage.getItem("vite-ui-theme") || "dark";
           if (t === "system") {
             t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
           }
@@ -33,8 +36,75 @@
         } catch (e) {}
       })();
     </script>
+    <style>
+      html {
+        scrollbar-gutter: stable; /* same rule as index.css, but applied before the app's CSS arrives */
+      }
+      html:has(#splash:not(.splash-done)) {
+        overflow: hidden; /* no scrollbar popping in and out behind the splash */
+      }
+      #splash {
+        --splash-bg: #f5f5f5;
+        --splash-outer: #2442de;
+        --splash-outer-opacity: 0.22;
+        --splash-mid: #2442de;
+        --splash-mid-opacity: 0.62;
+        --splash-core: #1b39d1;
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--splash-bg);
+        transition: opacity 300ms ease-out;
+      }
+      html.dark #splash {
+        --splash-bg: #0e0e0f;
+        --splash-outer: #ffffff;
+        --splash-outer-opacity: 0.9;
+        --splash-mid: #98a9f2;
+        --splash-mid-opacity: 1;
+        --splash-core: #4a6bff;
+      }
+      #splash.splash-done {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash svg {
+        width: 96px;
+        height: 96px;
+        overflow: visible;
+      }
+      #splash path {
+        transform-box: fill-box;
+        transform-origin: 50% 100%;
+        animation: splash-rise 1.8s ease-in-out infinite;
+      }
+      #splash .splash-mid { animation-delay: 0.18s; }
+      #splash .splash-outer { animation-delay: 0.36s; }
+      @keyframes splash-rise {
+        0% { opacity: 0; transform: translateY(14%) scale(0.7); }
+        25%, 70% { opacity: 1; transform: none; }
+        100% { opacity: 0; transform: translateY(-6%); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash path { animation: splash-pulse 1.8s ease-in-out infinite; }
+        @keyframes splash-pulse {
+          0%, 100% { opacity: 0.55; }
+          50% { opacity: 1; }
+        }
+      }
+    </style>
   </head>
   <body>
+    <div id="splash" role="status" aria-label="Loading Glow">
+      <svg viewBox="18 18 84 84" aria-hidden="true">
+        <path class="splash-outer" d="M60 20 L100 60 L60 100 L20 60 Z" fill="var(--splash-outer)" style="fill-opacity: var(--splash-outer-opacity)" />
+        <path class="splash-mid" d="M60 44 L88 72 L60 100 L32 72 Z" fill="var(--splash-mid)" style="fill-opacity: var(--splash-mid-opacity)" />
+        <path class="splash-core" d="M60 68 L76 84 L60 100 L44 84 Z" fill="var(--splash-core)" />
+      </svg>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

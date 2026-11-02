@@ -41,3 +41,10 @@ class PasswordReset(models.Model):
 
     def __str__(self):
         return f"Password reset token for {self.user.username}"
+
+
+class ProfileDesign(models.Model):  # how someone styled their profile page; only `published` is shown to visitors
+    account = models.OneToOneField(Account, on_delete=models.CASCADE, related_name="design")
+    published = models.JSONField(default=dict)
+    draft = models.JSONField(default=dict)
+    updated_at = models.DateTimeField(auto_now=True)

@@ -56,11 +56,13 @@ const ProfileTabs = ({
   hasMore,
   loadingMore,
   onLoadMore,
+  tabOrder = ["posts", "photos", "thoughts", "glows", "about"],
 }) => {
   const [isDialogOpen, setDialogOpen] = useState(false);
   // ?tab=glows (e.g. from a glow notification) opens that tab directly
   const [params, setParams] = useSearchParams();
-  const tab = params.get("tab") || "posts";
+  const requested = params.get("tab") || "posts";
+  const tab = tabOrder.includes(requested) ? requested : "posts"; // a hidden tab falls back to Posts
   const setTab = (t) =>
     setParams(t === "posts" ? {} : { tab: t }, { replace: true });
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(null);
@@ -70,7 +72,7 @@ const ProfileTabs = ({
     (post) => !post.photos || post.photos.length === 0,
   );
 
-  const TABS = [
+  const ALL_TABS = [
     // Real totals from the server (posts load a page at a time).
     { value: "posts", label: "Posts", count: counts?.posts ?? posts.length },
     {
@@ -86,6 +88,7 @@ const ProfileTabs = ({
     { value: "glows", label: "Kudos" },
     { value: "about", label: "About" },
   ];
+  const TABS = tabOrder.map((value) => ALL_TABS.find((t) => t.value === value)).filter(Boolean);
 
   const [selectedPost, setSelectedPost] = useState(null);
 
@@ -134,7 +137,7 @@ const ProfileTabs = ({
             <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 space-y-4 mt-5">
               {posts.map((post) => (
                 <div key={post.id} className="break-inside-avoid mb-4">
-                  <Card className="bg-[var(--background)]">
+                  <Card className="pf-card bg-[var(--background)]">
                     <CardContent>
                       <PostTopNav post={post} />
                       <PostCaptions post={post} />
@@ -222,7 +225,7 @@ const ProfileTabs = ({
             <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 space-y-4 mt-5">
               {thoughts.map((thought, index) => (
                 <div key={index} className="break-inside-avoid mb-4">
-                  <Card className="bg-[var(--background)] ">
+                  <Card className="pf-card bg-[var(--background)]">
                     <CardContent>
                       <PostTopNav post={thought} />
                       <PostCaptions post={thought} />

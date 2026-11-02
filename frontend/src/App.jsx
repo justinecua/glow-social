@@ -20,6 +20,7 @@ import ForgotPassword from "./features/auth/pages/ForgotPassword";
 import ResetPassword from "./features/auth/pages/ResetPassword";
 import { WebSocketProvider } from "./utils/WebSocketContext";
 import { useGetMeQuery } from "./redux/services/auth/auth";
+import { hideSplash } from "./utils/splash";
 import Terms from "./features/legal/pages/Terms";
 import Privacy from "./features/legal/pages/Privacy";
 import Guidelines from "./features/legal/pages/Guidelines";
@@ -35,7 +36,11 @@ import NotificationsRealtime from "./features/dashboard/components/Notifications
 
 function App() {
   const dispatch = useDispatch();
-  const { data } = useGetMeQuery();
+  const { data, isSuccess, isError } = useGetMeQuery();
+
+  useEffect(() => {
+    if (isSuccess || isError) hideSplash(); // signed in or not, we know which page to show
+  }, [isSuccess, isError]);
 
   useEffect(() => {
     if (data?.user) {

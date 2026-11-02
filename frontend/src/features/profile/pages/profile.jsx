@@ -13,6 +13,14 @@ import ProfileCover from "../components/ProfileCover";
 import SkeletonProfile from "@/features/dashboard/components/Skeleton/skeletonProfile";
 import ProfileBio from "../components/ProfileBio";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Eye, Loader2 } from "lucide-react";
+import { useTheme } from "@/components/themes/theme-provider";
+import { useGetProfileDesignQuery } from "@/redux/services/profileDesign";
+import DesignEditor from "../design/DesignEditor";
+import ProfileBlocks from "../design/ProfileBlocks";
+import { profileLook, withDefaults } from "../design/designStyle";
+import { useDesignEditor } from "../design/useDesignEditor";
+import { PROFILE_DESIGN_ENABLED } from "../design/options";
 
 const EMPTY = [];
 
@@ -21,6 +29,17 @@ const ProfilePage = () => {
   const me = useStoredUser();
   // Someone else's profile shows "Send a glow" + friend buttons: reserve them.
   const showActions = !!me && String(me?.user?.account_id) !== String(id);
+  const isOwn = !!me && !showActions;
+  const { resolvedTheme } = useTheme();
+  const { data: published, isLoading: designLoading, isFetching: designFetching } = useGetProfileDesignQuery(id, {
+    skip: !PROFILE_DESIGN_ENABLED, // when off, everyone gets the default look
+  });
+  const editor = useDesignEditor(id);
+  const editing = editor.editing && !!editor.draft;
+  const design = withDefaults(editing ? editor.draft : published?.design);
+  const blockData = editing ? (editor.previewData ?? published?.blocks) : published?.blocks;
+  const look = profileLook(design, resolvedTheme);
+  const asVisitor = editing && editor.visitor;
 
   const {
     data: profile,
@@ -70,7 +89,7 @@ const ProfilePage = () => {
     window.scrollTo({ top: 0, behavior: "auto" });
   }, []);
 
-  if (isLoading) {
+  if (isLoading || designLoading) {
     return (
       <div className="p-4 w-full flex flex-col items-center h-full">
         <SkeletonProfile showActions={showActions} />
@@ -82,34 +101,86 @@ const ProfilePage = () => {
   if (!Array.isArray(profile)) return <p>No profile data found</p>;
 
   return (
-    <div className=" w-full flex flex-col items-center min-h-screen">
-      {profile.map((item) => (
-        <Card
-          key={item.id}
-          className="w-full flex-1 gap-0 p-2 sm:w-[95%] sm:p-3 md:w-[85%] lg:w-[75%] bg-[var(--home-card)] shadow-md rounded-xl"
+    <>
+      <div
+        className={`pf-page flex min-h-screen w-full flex-col items-center ${look.forceDark ? "dark" : ""} ${
+          editing && !asVisitor ? "md:pr-[380px]" : ""
+        }`}
+        data-bg={design.background}
+        data-card={design.card_style}
+        style={look.vars}
+      >
+        {profile.map((item) => (
+          <div key={item.id} className="w-full sm:w-[95%] md:w-[85%] lg:w-[75%]">
+            {design.background === "cover_blur" && item.cover_photo && (
+              <div className="pf-blur-bg" style={{ backgroundImage: `url(${item.cover_photo})` }} aria-hidden="true" />
+            )}
+            <Card className="pf-card w-full flex-1 gap-0 bg-[var(--home-card)] p-2 shadow-md sm:p-3">
+              <ProfileCover item={item} design={design} look={look} />
+              <ProfileName
+                item={item}
+                id={id}
+                design={design}
+                look={look}
+                asVisitor={asVisitor}
+                onDesign={PROFILE_DESIGN_ENABLED && isOwn && !editing ? editor.start : undefined}
+                designOpening={editor.opening}
+              />
+              <ProfileBio item={item} id={id} design={design} extraStats={published?.stats} asVisitor={asVisitor} />
+              <ProfileBlocks blocks={design.blocks} data={blockData} profile={item} isOwn={isOwn && !asVisitor} />
+              <ProfileTabs
+                item={item}
+                posts={posts}
+                allPhotos={allPhotos}
+                counts={firstPage?.counts}
+                hasMore={!!next}
+                loadingMore={loadingMore}
+                onLoadMore={loadMore}
+                tabOrder={design.tabs}
+              />
+            </Card>
+          </div>
+        ))}
+      </div>
+
+      {editing && !asVisitor && (
+        <DesignEditor
+          draft={editor.draft}
+          onChange={editor.change}
+          unlocks={editor.unlocks}
+          posts={posts}
+          allPhotos={allPhotos}
+          canUndo={editor.canUndo}
+          onUndo={editor.undo}
+          onReset={editor.reset}
+          onVisitor={() => editor.setVisitor(true)}
+          onSave={editor.saveDraft}
+          onPublish={editor.publish}
+          onClose={editor.close}
+          saving={editor.saving}
+          savingAction={editor.savingAction}
+          dirty={editor.dirty}
+          error={editor.error}
+        />
+      )}
+      {isOwn && designFetching && !editing && (
+        <div
+          role="status"
+          className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[var(--home-card)] px-4 py-2 text-sm font-medium shadow-lg"
         >
-          {/* Cover Page */}
-          <ProfileCover item={item} />
-
-          {/* Name Info */}
-          <ProfileName item={item} id={id} />
-
-          {/* Bio Info*/}
-          <ProfileBio item={item} id={id} />
-
-          {/* Tabs Info*/}
-          <ProfileTabs
-            item={item}
-            posts={posts}
-            allPhotos={allPhotos}
-            counts={firstPage?.counts}
-            hasMore={!!next}
-            loadingMore={loadingMore}
-            onLoadMore={loadMore}
-          />
-        </Card>
-      ))}
-    </div>
+          <Loader2 className="h-4 w-4 animate-spin" /> Updating your profile…
+        </div>
+      )}
+      {asVisitor && (
+        <button
+          type="button"
+          onClick={() => editor.setVisitor(false)}
+          className="fixed bottom-6 left-1/2 z-50 flex h-11 -translate-x-1/2 cursor-pointer items-center gap-2 rounded-full bg-[var(--button-color-bg)] px-5 text-sm font-semibold text-white shadow-lg hover:opacity-90"
+        >
+          <Eye className="h-4 w-4" /> Back to editing
+        </button>
+      )}
+    </>
   );
 };
 

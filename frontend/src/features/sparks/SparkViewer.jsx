@@ -30,9 +30,9 @@ const DURATION_MS = 5000;
 const HOLD_MS = 450;
 const SWIPE_PX = 80;
 const CARD_MOTION = {
-  enter: ({ dir, slide }) => ({ opacity: 0, x: slide ? (dir >= 0 ? 60 : -60) : 0 }),
+  enter: (dir) => ({ opacity: 0, x: dir >= 0 ? 60 : -60 }),
   center: { opacity: 1, x: 0 },
-  exit: ({ dir, slide }) => ({ opacity: 0, x: slide ? (dir >= 0 ? -60 : 60) : 0, transition: { duration: 0.2 } }),
+  exit: (dir) => ({ opacity: 0, x: dir >= 0 ? -60 : 60, transition: { duration: 0.2 } }),
 };
 const SWIPE_SPEED = 500;
 // Glow blue (--button-color-bg #2442de), the app accent.
@@ -160,7 +160,6 @@ const SparkViewer = ({ sparks, startIndex, onClose }) => {
     ),
   );
   const [dir, setDir] = useState(1);
-  const lastAuthor = useRef(null);
   const [progress, setProgress] = useState(0);
   const [paused, setPaused] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -212,6 +211,12 @@ const SparkViewer = ({ sparks, startIndex, onClose }) => {
     if (cur && !cur.mine && !cur.seen) viewSpark(cur.id);
   }, [i]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    [list[i + 1], list[i + 2], list[i - 1]].forEach((near) => {
+      if (near?.photo) new Image().src = near.photo; // warm the cache so the next tap never shows an empty card
+    });
+  }, [list, i]);
+
   // Timer (paused while holding, dragging, reading stats, sending kudos or loading).
   const cur = list[i];
   const imgReady = !cur?.photo || loadedId === cur.id || failedId === cur.id;
@@ -232,10 +237,6 @@ const SparkViewer = ({ sparks, startIndex, onClose }) => {
     }, step);
     return () => window.clearInterval(t);
   }, [halted, next]);
-
-  useEffect(() => {
-    lastAuthor.current = s?.author.id ?? null;
-  }, [s?.author.id]);
 
   // Keyboard
   useEffect(() => {
@@ -260,8 +261,6 @@ const SparkViewer = ({ sparks, startIndex, onClose }) => {
 
   if (!s) return null;
 
-  const slide = lastAuthor.current !== null && lastAuthor.current !== s.author.id; // slide between people, fade within one person's sparks
-  const motionInfo = { dir, slide };
 
   const doWarm = () => {
     if (s.mine || isWarmed) return;
@@ -361,10 +360,10 @@ const SparkViewer = ({ sparks, startIndex, onClose }) => {
       )}
 
       <div className="relative h-[100dvh] w-full select-none sm:aspect-[9/16] sm:h-[min(92dvh,860px)] sm:w-auto">
-        <AnimatePresence initial={false} custom={motionInfo} mode="popLayout">
+        <AnimatePresence initial={false} custom={dir} mode="popLayout">
           <motion.div
-            key={s.id}
-            custom={motionInfo}
+            key={s.author.id} // one card per person: their sparks swap inside it, people slide
+            custom={dir}
             variants={CARD_MOTION}
             initial="enter"
             animate="center"
@@ -416,8 +415,8 @@ const SparkViewer = ({ sparks, startIndex, onClose }) => {
                 onLoad={() => setLoadedId(s.id)}
                 onError={() => setFailedId(s.id)}
                 className={`h-full w-full object-contain transition-opacity duration-500 ${
-                  imgReady ? "opacity-100" : "opacity-0"
-                }`}
+                  imgReady || loadedId !== null ? "opacity-100" : "opacity-0"
+                }`} // only the very first photo fades in; later swaps keep the old photo until the new one is ready
               />
             ) : (
               <SparkPrint s={s} textClass="px-10 text-3xl sm:text-4xl" />

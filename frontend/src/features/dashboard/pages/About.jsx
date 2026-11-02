@@ -15,7 +15,7 @@ import {
 import AppShell from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { useStoredUser } from "@/utils/auth";
-import glow from "@/assets/images/glow.png";
+import GlowLogo from "@/components/layout/GlowLogo";
 
 // Same soft brand glow as an empty profile cover.
 const GLOW_BG =
@@ -127,7 +127,7 @@ const About = () => {
           className="overflow-hidden rounded-2xl border px-6 py-10 text-center"
           style={{ background: GLOW_BG }}
         >
-          <img src={glow} alt="Glow" className="mx-auto h-14 w-14 drop-shadow-[0_0_18px_rgba(91,124,255,0.55)]" />
+          <GlowLogo className="mx-auto h-14 w-14 drop-shadow-[0_0_18px_rgba(91,124,255,0.55)]" />
           <h1 className="mx-auto mt-5 max-w-sm text-[26px] font-bold leading-tight text-[var(--title-color)]">
             A friendlier place to share your day
           </h1>
