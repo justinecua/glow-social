@@ -1,4 +1,4 @@
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Newspaper } from "lucide-react";
 import { useState } from "react";
 
 /** Parsed "Trending in X: Topic" post from @glow_trends, or null. */
@@ -53,22 +53,12 @@ const TrendCard = ({ trend, image }) => {
               className="h-20 w-20 shrink-0 rounded-lg object-cover"
             />
           ) : (
-            <img
-              src={`https://www.google.com/s2/favicons?domain=${trend.host}&sz=64`}
-              alt=""
-              loading="lazy"
-              className="mt-0.5 h-10 w-10 shrink-0 rounded-md bg-white object-contain p-1.5"
-            />
+            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted text-[var(--color-subtitle)]">
+              <Newspaper className="h-5 w-5" />
+            </div>
           )}
           <div className="flex min-w-0 flex-1 flex-col justify-center">
             <p className="flex items-center gap-1.5 text-xs text-[var(--color-subtitle)]">
-              {showImage && (
-                <img
-                  src={`https://www.google.com/s2/favicons?domain=${trend.host}&sz=32`}
-                  alt=""
-                  className="h-3.5 w-3.5 rounded-sm"
-                />
-              )}
               {trend.source}
             </p>
             <p className="mt-1 line-clamp-2 text-sm font-medium leading-snug">{trend.headline}</p>

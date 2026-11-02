@@ -26,10 +26,10 @@ const ForgotPassword = () => {
     }
 
     try {
-      await forgotPassword({ email }).unwrap();
-      toast("A link has been sent to your email");
+      const res = await forgotPassword({ email }).unwrap();
+      toast(res.message);
     } catch (err) {
-      const message = err?.data?.detail || "Something went wrong. Please try again";
+      const message = err?.data?.message || "Something went wrong. Please try again";
       toast.error(message);
     }
   };
