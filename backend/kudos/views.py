@@ -1,29 +1,11 @@
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.auth_utils import current_account_id
-from notifications.queries import countNotifications, showNotificationsByUser
+from notifications.queries import push_notifications
 
 from . import services
-
-
-def _push_notification(recipient_id, sender_id):
-    """Real-time bump of the recipient's notification badge (best effort)."""
-    try:
-        async_to_sync(get_channel_layer().group_send)(
-            f"user_{recipient_id}",
-            {
-                "type": "new_notification",
-                "from_user_id": sender_id,
-                "count": countNotifications(recipient_id),
-                "notifications": showNotificationsByUser(recipient_id),
-            },
-        )
-    except Exception as error:
-        print(f"Realtime push failed: {error}")
 
 
 class SendGlow(APIView):
@@ -37,7 +19,7 @@ class SendGlow(APIView):
             )
         except services.GlowError as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        _push_notification(note["recipient_id"], sender_id)
+        push_notifications(note["recipient_id"], sender_id)
         return Response(note, status=status.HTTP_201_CREATED)
 
 

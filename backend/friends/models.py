@@ -1,5 +1,7 @@
 from django.db import models
+
 from accounts.models import Account
+
 
 class Friend(models.Model):
     PENDING = "Pending"
@@ -20,20 +22,15 @@ class Friend(models.Model):
     class Meta:
         unique_together = ('user', 'friend')
         indexes = [
-            # "Who are X's friends?" checks both directions of the pair.
-            models.Index(fields=["user", "status"], name="friend_user_status_idx"),
-            models.Index(fields=["friend", "status"], name="friend_friend_status_idx"),
+            models.Index(fields=["user", "status"], name="friend_user_status_idx"),  # "who are X's friends?"
+            models.Index(fields=["friend", "status"], name="friend_friend_status_idx"),  # checks both directions
         ]
-    
+
     def __str__(self):
-        return f"{self.user.firstname} sent a friend request to {self.friend.firstname}"
+        return f"{self.user_id} -> {self.friend_id} ({self.status})"
 
 
-
-class CloseFriend(models.Model):
-    """`owner` put `friend` on their Close Friends list. Posts shared with
-    "Close friends" are visible only to people on the author's list."""
-
+class CloseFriend(models.Model):  # `owner` put `friend` on their Close Friends list
     owner = models.ForeignKey(Account, related_name="close_friends", on_delete=models.CASCADE)
     friend = models.ForeignKey(Account, related_name="close_friend_of", on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)

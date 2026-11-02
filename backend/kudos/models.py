@@ -3,14 +3,7 @@ from django.db import models
 from accounts.models import Account
 
 
-class GlowNote(models.Model):
-    """A short note of appreciation sent from one person to another.
-
-    `passed_from` links to the glow the sender had received and is now
-    paying forward; following those links backwards gives the chain
-    (Ana -> Geo -> Mark -> you).
-    """
-
+class GlowNote(models.Model):  # a short thank-you note from one person to another
     MAX_LENGTH = 140
 
     sender = models.ForeignKey(
@@ -20,7 +13,7 @@ class GlowNote(models.Model):
         Account, on_delete=models.CASCADE, related_name="glow_notes_received"
     )
     message = models.CharField(max_length=MAX_LENGTH)
-    passed_from = models.ForeignKey(
+    passed_from = models.ForeignKey(  # the kudos the sender got and is paying forward; links form the chain
         "self",
         null=True,
         blank=True,
@@ -28,8 +21,7 @@ class GlowNote(models.Model):
         related_name="passed_on",
     )
     created_at = models.DateTimeField(auto_now_add=True)
-    # Moderation: hidden notes disappear from walls, chains and stats.
-    is_hidden = models.BooleanField(default=False)
+    is_hidden = models.BooleanField(default=False)  # moderation: hidden from walls, chains and stats
 
     class Meta:
         ordering = ["-created_at"]
