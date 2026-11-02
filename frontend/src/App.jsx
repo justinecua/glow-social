@@ -5,6 +5,7 @@ import { useDispatch } from "react-redux";
 import { setUser } from "@/redux/slices/authSlice";
 
 import RootLayout from "./features/dashboard/pages/RootLayout";
+import ScrollToTop from "./components/layout/ScrollToTop";
 import { Routes, Route } from "react-router-dom";
 import Home from "./features/dashboard/pages/Home";
 import About from "./features/dashboard/pages/About";
@@ -28,6 +29,7 @@ import FriendsPage from "./features/discover/pages/Friends";
 import InvitePage from "./features/growth/InvitePage";
 import PostPage from "./features/growth/PostPage";
 import MessagesPage from "./features/messages/MessagesPage";
+import GamePage from "./features/games/GamePage";
 import ChatRealtime from "./features/messages/ChatRealtime";
 import NotificationsRealtime from "./features/dashboard/components/Notifications/NotificationsRealtime";
 
@@ -48,6 +50,7 @@ function App() {
       <MotionConfig reducedMotion="user">
       <WebSocketProvider>
         <RootLayout>
+          <ScrollToTop />
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/explore" element={<Explore />} />
@@ -65,6 +68,7 @@ function App() {
             <Route path="/post/:id" element={<PostPage />} />
             <Route path="/messages" element={<MessagesPage />} />
             <Route path="/messages/:id" element={<MessagesPage />} />
+            <Route path="/games/:id" element={<GamePage />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/guidelines" element={<Guidelines />} />

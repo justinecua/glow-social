@@ -1,6 +1,9 @@
 import json
 import re
 
+from django.db import transaction
+
+from games.queries import GameError, attach_games, clean_game, create_game, game_on_post, tell_canceled
 from GlowProject.media import MediaError, delete_media, read_image
 
 from .discover import bump_explore
@@ -72,21 +75,40 @@ def read_poll(data):  # (options, hours), or (None, None) when there's no poll
     return options, int(hours) if str(hours).isdigit() else 24
 
 
+def read_game(data):  # cleaned game fields, or None when the post isn't a game
+    game = json_field(data, "game", None)
+    if not game:
+        return None
+    if not isinstance(game, dict):
+        raise PostError("Game details are missing.")
+    try:
+        return clean_game(game, is_new=True)
+    except GameError as e:
+        raise PostError(str(e))
+
+
 def publish(account_id, request):  # validates everything first, then saves; returns the post as the feed shows it
     caption = read_caption(request.data)
     audience = read_audience(request.data) if request.data.get("audience") else "public"
     photos = read_photos(request)
-    if not caption and not photos:
+    game = read_game(request.data)
+    if not caption and not photos and not game:
         raise PostError("A post needs text or a photo.")
     tags = read_tags(request.data, caption)
     poll_options, poll_hours = read_poll(request.data)
+    if game and poll_options:
+        raise PostError("A post can have a poll or a game, not both.")
 
-    post = create_post(account_id, audience_id(audience), caption, photos, tags, request=request)
+    with transaction.atomic():  # a game post is never saved without its game
+        post = create_post(account_id, audience_id(audience), caption, photos, tags, request=request)
+        if game:
+            create_game(account_id, post["id"], game)
     post["audience"] = audience
     post["poll"] = None
     if poll_options:
         create_poll(post["id"], poll_options, poll_hours)
         post["poll"] = poll_data([post["id"]], account_id)[post["id"]]
+    attach_games([post], account_id)
 
     bump_explore()
     notify_new_post(account_id, audience)
@@ -109,6 +131,9 @@ def edit(post, data):  # `post` from find_own_post; changes only the fields that
 
 
 def remove(post_id):
+    game = game_on_post(post_id)
     for link in delete_post(post_id):
         delete_media(link)
+    if game:
+        tell_canceled(game)
     bump_explore()

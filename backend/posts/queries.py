@@ -137,12 +137,15 @@ def update_post(post_id, caption=None, audience_id=None):
 
 
 THIS_POSTS_POLL = "(SELECT id FROM glow.glow.posts_poll WHERE post_id = %(p)s)"
+THIS_POSTS_GAME = "(SELECT id FROM glow.glow.games_playsession WHERE post_id = %(p)s)"
 
 DELETE_POST = [  # children before the post; foreign keys don't cascade
     "UPDATE glow.glow.posts_poll SET correct_option_id = NULL WHERE post_id = %(p)s",
     f"DELETE FROM glow.glow.posts_pollvote WHERE poll_id IN {THIS_POSTS_POLL}",
     f"DELETE FROM glow.glow.posts_polloption WHERE poll_id IN {THIS_POSTS_POLL}",
     "DELETE FROM glow.glow.posts_poll WHERE post_id = %(p)s",
+    f"DELETE FROM glow.glow.games_playsessionplayer WHERE session_id IN {THIS_POSTS_GAME}",
+    "DELETE FROM glow.glow.games_playsession WHERE post_id = %(p)s",
     """
     WITH RECURSIVE doomed AS (
         SELECT id FROM glow.glow.interactions_comment WHERE post_id = %(p)s
