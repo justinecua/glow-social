@@ -1,60 +1,19 @@
-from posts.visibility import can_view_post, viewer_account_id
-from accounts.auth_utils import current_account_id
-
-from django.shortcuts import render
-from rest_framework.views import APIView
+from rest_framework import permissions, status
 from rest_framework.response import Response
-from rest_framework import status, permissions
-from drf_yasg.utils import swagger_auto_schema
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.views import APIView
 
-from .queries import (
-    countGlows,
-    getProfileGlows,
-    countComments,
-    showComments,
-    addComment,
-    editComment,
-    deleteComment,
-)
+from accounts.auth_utils import current_account_id
+from posts.visibility import can_view_post, viewer_account_id
 
-from .api.decorators import (
-    count_glows_decorator,
-    get_profile_glows_decorator,
-    count_comments_decorator,
-    show_comments_decorator
-)
+from .api.decorators import show_comments_decorator
+from .queries import CommentError, add_comment, delete_comment, edit_comment, list_comments
+
+POST_NOT_FOUND = {"detail": "Post not found."}
 
 
-class CountGlows(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
+def as_id(value):  # ids from a request body arrive as text or numbers; anything else is invalid
+    return int(value) if str(value).isdigit() else None
 
-    @count_glows_decorator()
-    def get(self, request):
-        post_id = request.data.get("post_id") 
-
-        data = countGlows(post_id) 
-        return Response(data)
-
-class GetProfileGlows(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
-
-    @get_profile_glows_decorator()
-    def get(self, request):
-        post_id = request.data.get("post_id") 
-
-        data = getProfileGlows(post_id) 
-        return Response(data)
-
-class CountComments(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
-
-    @count_comments_decorator()
-    def get(self, request):
-        post_id = request.data.get("post_id") 
-
-        data = countComments(post_id) 
-        return Response(data)
 
 class ShowComments(APIView):
     permission_classes = (permissions.AllowAny,)
@@ -62,42 +21,42 @@ class ShowComments(APIView):
     @show_comments_decorator()
     def get(self, request, post_id):
         if not can_view_post(post_id, viewer_account_id(request)):
-            return Response({"detail": "Post not found."}, status=status.HTTP_404_NOT_FOUND)
-        data = showComments(post_id)
-        return Response(data)
+            return Response(POST_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+        return Response(list_comments(post_id))
+
 
 class AddComment(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def post(self, request):
-        comment = request.data.get("comment")
-        accID = current_account_id(request)  # ignore client-sent accID
-        postId = request.data.get("postId")
-        if not can_view_post(postId, accID):
-            return Response({"detail": "Post not found."}, status=status.HTTP_404_NOT_FOUND)
-        parentId = request.data.get("parentId")
-
-        if not comment or not str(comment).strip():
-            return Response(
-                {"status": "error", "message": "Comment cannot be empty."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        data = addComment(str(comment).strip(), postId, accID, parentId)
-        if data.get("status") != "success":
-            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+        me = current_account_id(request)
+        post_id = as_id(request.data.get("postId"))
+        if not post_id or not can_view_post(post_id, me):
+            return Response(POST_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+        try:
+            data = add_comment(request.data.get("comment"), post_id, me, as_id(request.data.get("parentId")))
+        except CommentError as e:
+            return Response({"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(data, status=status.HTTP_201_CREATED)
-    
 
-class CommentDetail(APIView):
-    """PATCH to edit your comment; DELETE to remove your comment (or any
-    comment on your own post)."""
+
+class CommentDetail(APIView):  # PATCH edits your comment; DELETE removes yours, or any on your post
     permission_classes = (permissions.IsAuthenticated,)
 
     def patch(self, request, comment_id):
-        data = editComment(comment_id, current_account_id(request), request.data.get("comment"))
-        return Response(data, status=data["status"])
+        try:
+            comment = edit_comment(comment_id, current_account_id(request), request.data.get("comment"))
+        except CommentError as e:
+            return Response({"status": 400, "message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        if not comment:
+            return Response({"status": 404, "message": "Comment not found or not yours."}, status=status.HTTP_404_NOT_FOUND)
+        return Response({"status": 200, "comment": comment})
 
     def delete(self, request, comment_id):
-        data = deleteComment(comment_id, current_account_id(request))
-        return Response(data, status=data["status"])
+        deleted_ids = delete_comment(comment_id, current_account_id(request))
+        if not deleted_ids:
+            return Response(
+                {"status": 404, "message": "Comment not found or you can't delete it."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response({"status": 200, "deleted_ids": deleted_ids})
