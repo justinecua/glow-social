@@ -71,13 +71,11 @@ const Privacy = () => (
       <ul className="ml-5 list-disc space-y-1">
         {/* TODO: keep this list accurate as providers change. */}
         <li>
-          <strong>ImageKit</strong> — stores and delivers uploaded photos;
-        </li>
-        <li>
           <strong>Mailgun</strong> — sends account emails;
         </li>
         <li>
-          <strong>Our hosting and database providers</strong> — run the Service;
+          <strong>Our hosting and database providers</strong> — run the Service and store your
+          uploaded photos;
         </li>
         <li>
           <strong>Authorities</strong> — when required by law, or to protect someone's safety.

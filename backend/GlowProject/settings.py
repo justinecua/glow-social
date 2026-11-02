@@ -272,20 +272,14 @@ SOCIALACCOUNT_EMAIL_VERIFICATION = "none"
 
 SOCIALACCOUNT_LOGIN_ON_GET=True
 
-IMAGEKIT_DEFAULT_CACHEFILE_BACKEND = 'imagekit.cachefiles.backends.Simple'
-IMAGEKIT_CACHEFILE_DIR = 'cache'
-
-IMAGEKIT_PUBLIC_KEY = os.getenv("IMAGEKIT_PUBLIC_KEY")
-IMAGEKIT_PRIVATE_KEY = os.getenv("IMAGEKIT_PRIVATE_KEY")
-IMAGEKIT_URL_ENDPOINT = os.getenv("IMAGEKIT_URL_ENDPOINT")
-
 DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024
 
 from datetime import timedelta
 
 SIMPLE_JWT = {
     "AUTH_COOKIE": "access_token", 
-    "AUTH_COOKIE_SECURE": False,   
+    # HTTPS-only auth cookies. Set AUTH_COOKIE_SECURE=True in production.
+    "AUTH_COOKIE_SECURE": os.getenv("AUTH_COOKIE_SECURE") == "True",
     "AUTH_COOKIE_HTTP_ONLY": True,
     "AUTH_COOKIE_SAMESITE": "Lax",
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=5),
