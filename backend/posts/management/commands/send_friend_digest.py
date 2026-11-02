@@ -1,25 +1,11 @@
-"""Notify people when their friends posted today:
-"Mitch, Rosalio and 2 others posted today."
-
-    python manage.py send_friend_digest            # send
-    python manage.py send_friend_digest --dry-run  # print who'd get what
-
-Run once a day (e.g. 7pm, when people are free):
-    0 19 * * *  manage.py send_friend_digest
-
-Only counts real people (not bots) and posts the recipient is allowed to
-see, and sends at most one digest per person per day.
-"""
-
 from datetime import timedelta
 
 from django.core.management.base import BaseCommand
-from django.db import connections
 from django.utils import timezone
 
-from accounts.models import Account
-from notifications.models import Notification, NotificationType
-from posts.discover import friend_ids
+from friends.queries import friend_ids
+from GlowProject.db import fetch_column, fetch_tuples
+from notifications.queries import create_notification
 from posts.visibility import visible_sql
 
 TYPE = "friends_posted"
@@ -30,27 +16,24 @@ def _name(row):
     return " ".join(x for x in (first, last) if x) or username
 
 
-def digest_for(account_id, since):
-    """(text, most recent poster id) or None if no friends posted."""
+def digest_for(account_id, since):  # (text, most recent poster id), or None if no friends posted
     friends = friend_ids(account_id)
     if not friends:
         return None
     vis, vis_params = visible_sql(account_id)
-    with connections["default"].cursor() as cursor:
-        cursor.execute(
-            f"""
-            SELECT p.account_id, a.firstname, a.lastname, u.username, MAX(p."dateTime") AS latest
-            FROM glow.glow.posts_post p
-            JOIN glow.glow.accounts_account a ON a.id = p.account_id
-            JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
-            WHERE p.account_id = ANY(%s) AND p."dateTime" >= %s
-              AND NOT COALESCE(a.is_bot, FALSE) AND {vis}
-            GROUP BY p.account_id, a.firstname, a.lastname, u.username
-            ORDER BY latest DESC
-            """,
-            [friends, since, *vis_params],
-        )
-        rows = cursor.fetchall()
+    rows = fetch_tuples(
+        f"""
+        SELECT p.account_id, a.firstname, a.lastname, u.username, MAX(p."dateTime") AS latest
+        FROM glow.glow.posts_post p
+        JOIN glow.glow.accounts_account a ON a.id = p.account_id
+        JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
+        WHERE p.account_id = ANY(%s) AND p."dateTime" >= %s
+          AND NOT COALESCE(a.is_bot, FALSE) AND {vis}
+        GROUP BY p.account_id, a.firstname, a.lastname, u.username
+        ORDER BY latest DESC
+        """,
+        [friends, since, *vis_params],
+    )
     if not rows:
         return None
     names = [_name(r[1:4]) for r in rows]
@@ -65,34 +48,41 @@ def digest_for(account_id, since):
 
 
 class Command(BaseCommand):
-    help = "Send each person a 'your friends posted today' notification."
+    help = (
+        "Notify people when friends posted today (\"Mitch, Rosalio and 2 others posted today.\"). "
+        "Counts real people only and posts the recipient may see; at most one digest per person per day. "
+        "Run daily, e.g. 0 19 * * *"
+    )
 
     def add_arguments(self, parser):
         parser.add_argument("--dry-run", action="store_true")
 
     def handle(self, dry_run, **opts):
         now = timezone.now()
-        since = now - timedelta(hours=24)
         start_of_day = timezone.localtime(now).replace(hour=0, minute=0, second=0, microsecond=0)
-        ntype, _ = NotificationType.objects.get_or_create(type=TYPE)
-        already = set(
-            Notification.objects.filter(notif_type=ntype, created_at__gte=start_of_day)
-            .values_list("notif_to_id", flat=True)
+        people = fetch_column(
+            """
+            SELECT a.id
+            FROM glow.glow.accounts_account a
+            JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
+            WHERE u.is_active AND NOT a.is_bot
+              AND NOT EXISTS (  -- already got today's digest
+                  SELECT 1 FROM glow.glow.notifications_notification n
+                  JOIN glow.glow.notifications_notificationtype t ON t.id = n.notif_type_id
+                  WHERE n.notif_to_id = a.id AND t.type = %s AND n.created_at >= %s
+              )
+            """,
+            (TYPE, start_of_day),
         )
         sent = 0
-        for acc in Account.objects.filter(is_bot=False, auth_user__is_active=True).only("id"):
-            if acc.id in already:
+        for account_id in people:
+            digest = digest_for(account_id, now - timedelta(hours=24))
+            if not digest:
                 continue
-            d = digest_for(acc.id, since)
-            if not d:
-                continue
-            text, from_id = d
+            text, from_id = digest
             if dry_run:
-                self.stdout.write(f"{acc.id}: {text}")
+                self.stdout.write(f"{account_id}: {text}")
             else:
-                Notification.objects.create(
-                    status=Notification.UNREAD, notif_type=ntype,
-                    notif_to_id=acc.id, notif_from_id=from_id, content=text,
-                )
+                create_notification(TYPE, account_id, from_id, text)
             sent += 1
         self.stdout.write(self.style.SUCCESS(f"{'Would send' if dry_run else 'Sent'} {sent} digest(s)."))

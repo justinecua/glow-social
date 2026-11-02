@@ -34,14 +34,15 @@ const ProfileName = ({ item, id }) => {
     [cap(item?.firstname), cap(item?.lastname)].filter(Boolean).join(" ") ||
     item?.username;
 
+  const skipFriendCheck = !id || !user?.user?.account_id || id == user?.user?.account_id; // signed out or own profile
   const {
     data: initialFriendRequest,
     isLoading,
     refetch,
-  } = useCheckUserFriendRequestQuery({
-    friend_id: id,
-    accId: user?.user?.account_id,
-  });
+  } = useCheckUserFriendRequestQuery(
+    { friend_id: id, accId: user?.user?.account_id },
+    { skip: skipFriendCheck },
+  );
 
   const isOwnProfile = id == user?.user?.account_id;
   const isSender = user?.user?.account_id === initialFriendRequest?.user_id;
@@ -74,18 +75,18 @@ const ProfileName = ({ item, id }) => {
         setUnfriend(false);
       }
 
-      if (data.type === "unfriend_result") {
+      if (data.type === "unfriend") {
         setUnfriend(false);
       }
 
-      if (data.type === "refresh_friend_status") {
-        refetch();
+      if (data.type === "refresh_friend_status" && !skipFriendCheck) {
+        refetch(); // throws if the query was skipped
       }
     };
 
     socket.addEventListener("message", handleMessage);
     return () => socket.removeEventListener("message", handleMessage);
-  }, [socketRef, profile_id, user, refetch]);
+  }, [socketRef, profile_id, user, refetch, skipFriendCheck]);
 
   const addFriend = () => {
     setLoading(true);

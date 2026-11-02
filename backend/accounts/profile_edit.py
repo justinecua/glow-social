@@ -1,132 +1,112 @@
-"""Editing your own profile: names, bio, gender, birthday, profile and cover
-photos. Photos arrive as data URLs (same as post photos) and are saved under
-MEDIA_ROOT/profiles/."""
-
 from datetime import date
 
-
+from GlowProject.db import execute, fetch_one
 from GlowProject.media import MediaError, delete_media, read_image, save_image
 
-MAX_PHOTO_BYTES = 8 * 1024 * 1024
-GENDERS = {"", "male", "female", "non-binary", "other", "prefer not to say"}
+from .registration import age_on
 
-# First bytes of each allowed image type -> file extension.
-_SIGNATURES = (
-    (b"\xff\xd8\xff", "jpg"),
-    (b"\x89PNG\r\n\x1a\n", "png"),
-    (b"GIF87a", "gif"),
-    (b"GIF89a", "gif"),
-)
+GENDERS = {"", "male", "female", "non-binary", "other", "prefer not to say"}
+TEXT_FIELDS = (("firstname", 50), ("lastname", 50), ("bio", 255))  # (field, max length)
+PHOTO_FIELDS = (("profile_photo", "avatars"), ("cover_photo", "covers"))  # (field, media folder)
 
 
 class ProfileError(ValueError):
     pass
 
 
-def _image_ext(data: bytes):
-    for sig, ext in _SIGNATURES:
-        if data.startswith(sig):
-            return ext
-    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return "webp"
-    return None
+def get_account(user_id):
+    return fetch_one(
+        """
+        SELECT id, firstname, lastname, bio, gender, birthday, profile_photo, cover_photo
+        FROM glow.glow.accounts_account
+        WHERE auth_user_id = %s
+        """,
+        (user_id,),
+    )
 
 
-def _save_photo(source, folder: str, request) -> str:
-    """Validate + store a profile/cover photo (multipart file or data URL)."""
+def text_changes(data):
+    changes = {}
+    for field, max_len in TEXT_FIELDS:
+        if data.get(field) is None:
+            continue  # not sent: leave it as it is
+        value = str(data[field]).strip()
+        if len(value) > max_len:
+            raise ProfileError(f"{field.capitalize()} must be {max_len} characters or fewer.")
+        changes[field] = value
+    return changes
+
+
+def gender_change(data):
+    if "gender" not in data:
+        return {}
+    gender = (data["gender"] or "").strip().lower()
+    if gender not in GENDERS:
+        raise ProfileError("Pick a gender from the list.")
+    return {"gender": gender}
+
+
+def birthday_changes(data):
+    if "birthday" not in data:
+        return {}
+    if not data["birthday"]:
+        return {"birthday": None}  # cleared
+
     try:
-        link = save_image(read_image(source), f"profiles/{folder}")
-    except MediaError as e:
-        raise ProfileError(str(e))
-    return request.build_absolute_uri(link) if request and link.startswith("/") else link
+        birthday = date.fromisoformat(str(data["birthday"]))
+    except ValueError:
+        raise ProfileError("Birthday must be a valid date.")
+    today = date.today()
+    if birthday > today or birthday.year < 1900:
+        raise ProfileError("Birthday must be a valid date.")
+    return {"birthday": birthday, "age": age_on(birthday, today)}
 
 
-def _delete_old(url):
-    """Remove a previously uploaded profile file (best effort)."""
-    delete_media(url)
-
-
-def _text(data, key, max_len):
-    v = data.get(key)
-    if v is None:
-        return None
-    v = str(v).strip()
-    if len(v) > max_len:
-        raise ProfileError(f"{key.capitalize()} must be {max_len} characters or fewer.")
-    return v
-
-
-def update_profile(account, data, request=None):
-    """Apply the fields present in `data` to `account`. Missing keys are left
-    unchanged; `profile_photo`/`cover_photo` set to null or "" remove them."""
-    changed = []
-
-    for key, max_len in (("firstname", 50), ("lastname", 50), ("bio", 255)):
-        v = _text(data, key, max_len)
-        if v is not None:
-            setattr(account, key, v)
-            changed.append(key)
-
-    if "gender" in data:
-        g = (data.get("gender") or "").strip().lower()
-        if g not in GENDERS:
-            raise ProfileError("Pick a gender from the list.")
-        account.gender = g
-        changed.append("gender")
-
-    if "birthday" in data:
-        b = data.get("birthday")
-        if not b:
-            account.birthday = None
-        else:
-            try:
-                bd = date.fromisoformat(str(b))
-            except ValueError:
-                raise ProfileError("Birthday must be a valid date.")
-            today = date.today()
-            if bd > today or bd.year < 1900:
-                raise ProfileError("Birthday must be a valid date.")
-            account.birthday = bd
-            account.age = today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
-            changed.append("age")
-        changed.append("birthday")
-
-    new_files = []
+def photo_changes(data):
+    changes, saved = {}, []
     try:
-        for key, folder in (("profile_photo", "avatars"), ("cover_photo", "covers")):
-            if key not in data:
+        for field, folder in PHOTO_FIELDS:
+            if field not in data:
                 continue
-            v = data.get(key)
-            old = getattr(account, key)
-            if not v:
-                setattr(account, key, None if key == "profile_photo" else "")
-            elif isinstance(v, str) and v.startswith("data:"):
-                url = _save_photo(v, folder, request)
-                new_files.append(url)
-                setattr(account, key, url)
-            else:
-                continue  # unchanged URL sent back: ignore
-            changed.append(key)
-            new_files.append(("old", old))
-    except ProfileError:
-        for f in new_files:
-            if isinstance(f, str):
-                _delete_old(f)
-        raise
+            value = data[field]
+            if not value:
+                changes[field] = None if field == "profile_photo" else ""  # removed
+            elif isinstance(value, str) and value.startswith("data:"):  # a new upload; anything else is the current URL sent back
+                changes[field] = save_image(read_image(value), f"profiles/{folder}")
+                saved.append(changes[field])
+    except MediaError as e:
+        for link in saved:
+            delete_media(link)  # undo this request's uploads
+        raise ProfileError(str(e))
+    return changes
 
-    if changed:
-        account.save(update_fields=list(dict.fromkeys(changed)))
-        for f in new_files:
-            if isinstance(f, tuple):
-                _delete_old(f[1])
+
+def save_changes(account_id, changes):
+    columns = ", ".join(f"{field} = %s" for field in changes)  # field names come from this file, never from the user
+    execute(
+        f"UPDATE glow.glow.accounts_account SET {columns} WHERE id = %s",
+        [*changes.values(), account_id],
+    )
+
+
+def update_profile(account, data):  # `account` from get_account; only fields present in `data` change
+    changes = {**text_changes(data), **gender_change(data), **birthday_changes(data)}
+    photos = photo_changes(data)
+    changes.update(photos)
+
+    if changes:
+        save_changes(account["id"], changes)
+        for field in photos:
+            delete_media(account[field])  # the old photo is no longer used
+        account.update(changes)
 
     return {
-        "account_id": account.id,
-        "firstname": account.firstname,
-        "lastname": account.lastname,
-        "bio": account.bio,
-        "gender": account.gender,
-        "birthday": account.birthday.isoformat() if account.birthday else None,
-        "profile_photo": account.profile_photo,
-        "cover_photo": account.cover_photo,
+        "account_id": account["id"],
+        "firstname": account["firstname"],
+        "lastname": account["lastname"],
+        "bio": account["bio"],
+        "gender": account["gender"],
+        "birthday": account["birthday"].isoformat() if account["birthday"] else None,
+        "profile_photo": account["profile_photo"],
+        "cover_photo": account["cover_photo"],
     }

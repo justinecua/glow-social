@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <meta name="description" content="{{ description }}">
+
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Glow">
+  <meta property="og:title" content="{{ title }}">
+  <meta property="og:description" content="{{ description }}">
+  <meta property="og:url" content="{{ share_url }}">
+  {% if image %}<meta property="og:image" content="{{ image }}">{% endif %}
+  <meta name="twitter:card" content="{% if image %}summary_large_image{% else %}summary{% endif %}">
+
+  <meta http-equiv="refresh" content="0; url={{ app_url }}">
+  <link rel="canonical" href="{{ app_url }}">
+</head>
+<body>
+  <p><a href="{{ app_url }}">Open this post on Glow</a></p>
+</body>
+</html>

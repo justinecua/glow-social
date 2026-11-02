@@ -1,14 +1,8 @@
-"""Today's prompt: something to post about, shown above the feed.
-
-Some weekdays have a recurring photo challenge (#FoodFriday, #OOTD...);
-the other days rotate through questions. Posts made from the prompt get its
-tag, so everyone's answers can be browsed together on Explore."""
-
-from django.db import connections
 from django.utils import timezone
 
-# Weekday (Mon=0) -> recurring photo challenge.
-CHALLENGES = {
+from GlowProject.db import fetch_tuples
+
+CHALLENGES = {  # weekday (Monday = 0) -> recurring photo challenge
     0: ("Monday mood: show us how your week is starting 📸", "MondayMood"),
     2: ("View from here: post what's in front of you right now 🌇", "ViewFromHere"),
     4: ("Food Friday! What are you eating today? 🍜", "FoodFriday"),
@@ -16,8 +10,7 @@ CHALLENGES = {
     6: ("Sunday throwback: an old photo and the story behind it 🕰️", "SundayThrowback"),
 }
 
-# Other days rotate through these.
-PROMPTS = [
+PROMPTS = [  # other days rotate through these
     ("What made you smile today?", "SmileToday"),
     ("What are you listening to right now? 🎧", "NowPlaying"),
     ("One small win you had this week 🏆", "SmallWins"),
@@ -42,25 +35,22 @@ def today_prompt():
         text, tag = PROMPTS[today.toordinal() % len(PROMPTS)]
         kind = "prompt"
 
-    # Who has answered today (public posts with the tag), newest first.
     start = timezone.make_aware(timezone.datetime.combine(today, timezone.datetime.min.time()))
-    with connections["default"].cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT p.account_id, u.username, a.profile_photo
-            FROM glow.glow.posts_post p
-            JOIN glow.glow.posts_tag_post tp ON tp.post_id = p.id
-            JOIN glow.glow.posts_tag t ON t.id = tp.tag_id
-            JOIN glow.glow.accounts_account a ON a.id = p.account_id
-            JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
-            LEFT JOIN glow.glow.posts_audience aud ON aud.id = p.audience_id
-            WHERE LOWER(t.tag) = LOWER(%s) AND p."dateTime" >= %s
-              AND COALESCE(aud.key, 'public') = 'public'
-            ORDER BY p."dateTime" DESC
-            """,
-            (tag, start),
-        )
-        rows = cursor.fetchall()
+    rows = fetch_tuples(  # who answered today: public posts with the tag, newest first
+        """
+        SELECT p.account_id, u.username, a.profile_photo
+        FROM glow.glow.posts_post p
+        JOIN glow.glow.posts_tag_post tp ON tp.post_id = p.id
+        JOIN glow.glow.posts_tag t ON t.id = tp.tag_id
+        JOIN glow.glow.accounts_account a ON a.id = p.account_id
+        JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
+        LEFT JOIN glow.glow.posts_audience aud ON aud.id = p.audience_id
+        WHERE LOWER(t.tag) = LOWER(%s) AND p."dateTime" >= %s
+          AND COALESCE(aud.key, 'public') = 'public'
+        ORDER BY p."dateTime" DESC
+        """,
+        (tag, start),
+    )
 
     seen, people = set(), []
     for account_id, username, photo in rows:

@@ -66,9 +66,6 @@ export const WebSocketProvider = ({ children }) => {
       socket.onmessage = (event) => {
         const data = JSON.parse(event.data);
         window.dispatchEvent(new CustomEvent("glow:ws", { detail: data }));
-        if (data.type === "user_logged_in") {
-          console.log(`${data.username} just logged in`);
-        }
       };
 
       socket.onclose = () => {
