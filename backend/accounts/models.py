@@ -1,5 +1,6 @@
-from django.db import models
 from django.conf import settings
+from django.db import models
+
 
 class Account(models.Model):
     firstname = models.CharField(max_length=255, blank=True, default="")
@@ -10,25 +11,18 @@ class Account(models.Model):
     bio = models.CharField(max_length=255, blank=True, default="")
     ui_appearance = models.CharField(max_length=255, blank=True, default="")
     cover_photo = models.URLField(verbose_name="File URL", blank=True, default="")
-    cover_photo_id_imagekit = models.CharField(max_length=355, null=True, blank=True, default="")
     profile_photo = models.URLField(verbose_name="File URL", blank=True, null=True, default=None)
-    profile_photo_id_imagekit = models.CharField(max_length=355, null=True, blank=True, default="")
     auth_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.CASCADE)
     last_activity = models.DateTimeField(null=True, blank=True)
     is_online = models.BooleanField(default=False)
-    # Automated account (e.g. @glow_trends). Shown with an "Automated" badge
-    # and ranked lower in the feed than real people.
-    is_bot = models.BooleanField(default=False)
+    is_bot = models.BooleanField(default=False)  # automated account, ranked below real people
 
-    # Legal consent records. Kept so we can show *when* a user agreed to
-    # *which* version of the Terms/Privacy Policy, and their marketing choice.
-    terms_version = models.CharField(max_length=32, blank=True, default="")
+    terms_version = models.CharField(max_length=32, blank=True, default="")  # which Terms they agreed to
     terms_accepted_at = models.DateTimeField(null=True, blank=True)
     marketing_opt_in = models.BooleanField(default=False)
     marketing_opt_in_at = models.DateTimeField(null=True, blank=True)
 
-    # Who invited this person (via /invite/<username>), for growth tracking.
-    invited_by = models.ForeignKey(
+    invited_by = models.ForeignKey(  # from /invite/<username>
         "self",
         null=True,
         blank=True,
@@ -38,6 +32,7 @@ class Account(models.Model):
 
     def __str__(self):
         return f"{self.firstname} {self.lastname}"
+
 
 class PasswordReset(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
