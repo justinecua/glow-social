@@ -1,255 +1,127 @@
-from accounts.auth_utils import current_account_id
-from django.shortcuts import render
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status, permissions
-from drf_yasg.utils import swagger_auto_schema
-from rest_framework_simplejwt.tokens import RefreshToken
-from posts.services.link_preview import get_link_preview
-from posts.services.external_feeds import (
-    getJokes,
-    getUselessFacts,
-    getAdvice,
-    getQuotes,
-    getRiddle,
-    getMemeFromReddit,
-    getRandomAnimeImage
-)
-
-from .discover import bump_explore, explore, feed, mark_seen, new_posts_since, posts_by_tag, posts_by_user, search, single_post
-from .visibility import audience_id, can_view_post, viewer_account_id
-from accounts.auth_utils import account_id_for_user
-import re
-from .polls import PollError, clean_options, create_poll, poll_data, vote
-from .prompts import today_prompt
 from datetime import datetime
+
 import pytz
-from .queries import (
-    getPosts,
-    getPostsByUser,
-    create_post,
-    sendGlow,
-    sendUnglow
-)
+from django.conf import settings
+from django.http import HttpResponseNotFound
+from django.shortcuts import render
+from rest_framework import permissions, status
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from .api.decorators import (
-    get_posts_decorator,
-)
+from accounts.auth_utils import current_account_id
 
-
-import json
-
-from GlowProject.media import MediaError, delete_media, read_image
-
-MAX_POST_PHOTOS = 10
-
-from .realtime import notify_new_post
-
-class GetPosts(APIView):
-    permission_classes = (permissions.AllowAny,)
-
-    def get(self, request):
-        try:
-            offset = max(0, int(request.query_params.get('offset', 0)))
-            limit = min(30, max(1, int(request.query_params.get('limit', 5))))
-        except ValueError:
-            return Response({"detail": "Invalid paging."}, status=status.HTTP_400_BAD_REQUEST)
-        # Friends-first for signed-in users; plain newest-first otherwise.
-        try:
-            viewer = account_id_for_user(request.user)
-        except Exception:
-            viewer = None
-        seed, anchor = _feed_visit(request)
-        return Response(feed(request, viewer, offset, limit, seed=seed, anchor=anchor))
+from . import posting
+from .discover import explore, feed, mark_seen, new_posts_since, posts_by_tag, posts_by_user, search, single_post
+from .polls import PollError, vote
+from .prompts import today_prompt
+from .queries import find_own_post, glow_post, unglow_post
+from .services.link_preview import get_link_preview
+from .visibility import can_view_post, viewer_account_id
 
 
-def _feed_visit(request):
-    """The client's per-visit seed (ms timestamp of when the feed opened).
-    It shuffles the feed and freezes "now" for paging."""
-    raw = request.query_params.get("seed", "")
+def bad_request(message):
+    return Response({"detail": str(message)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+def not_found():
+    return Response({"detail": "Post not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+def as_id(value):  # ids in a request body arrive as text or numbers; anything else is invalid
+    return int(value) if str(value).isdigit() else None
+
+
+def number_param(request, name, default, smallest, largest):  # ?limit=... clamped to a safe range
+    value = request.query_params.get(name)
+    if not str(value).isdigit():
+        return default
+    return min(largest, max(smallest, int(value)))
+
+
+def feed_opened_at(request):  # ?seed= is the ms timestamp the feed opened: it shuffles the feed and freezes "now"
+    seed = request.query_params.get("seed", "")
     try:
-        ms = int(raw)
-        anchor = datetime.fromtimestamp(ms / 1000, tz=pytz.utc)
-    except (TypeError, ValueError, OverflowError, OSError):
+        return seed, datetime.fromtimestamp(int(seed) / 1000, tz=pytz.utc)
+    except (ValueError, OverflowError, OSError):
         return None, None
-    return raw, anchor
 
 
-class VotePoll(APIView):
-    """POST {"option_id": n}: vote on a post's poll (one vote each)."""
-    permission_classes = (permissions.IsAuthenticated,)
-
-    def post(self, request, post_id):
-        viewer = account_id_for_user(request.user)
-        if not can_view_post(post_id, viewer):
-            return Response({"detail": "Post not found."}, status=status.HTTP_404_NOT_FOUND)
-        try:
-            option_id = int(request.data.get("option_id"))
-            return Response(vote(post_id, option_id, viewer))
-        except (TypeError, ValueError):
-            return Response({"detail": "Pick an option."}, status=status.HTTP_400_BAD_REQUEST)
-        except PollError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-
-class TodayPrompt(APIView):
-    """Today's prompt or photo challenge, with who has answered."""
+class GetPosts(APIView):  # the home feed
     permission_classes = (permissions.AllowAny,)
 
     def get(self, request):
-        return Response(today_prompt())
+        offset = number_param(request, "offset", 0, 0, 100_000)
+        limit = number_param(request, "limit", 5, 1, 30)
+        seed, opened_at = feed_opened_at(request)
+        return Response(feed(request, viewer_account_id(request), offset, limit, seed=seed, anchor=opened_at))
 
 
-class MarkSeen(APIView):
-    """POST {"ids": [...]}: posts that appeared on screen in the feed."""
+class NewPostsSince(APIView):  # how many posts appeared since the feed opened (the "New posts" pill)
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request):
+        _, opened_at = feed_opened_at(request)
+        if opened_at is None:
+            return bad_request("Invalid seed.")
+        return Response(new_posts_since(viewer_account_id(request), opened_at))
+
+
+class MarkSeen(APIView):  # POST {"ids": [...]}: posts that were on screen, so the feed shows new ones next time
     permission_classes = (permissions.IsAuthenticated,)
 
     def post(self, request):
         ids = request.data.get("ids") or []
         if not isinstance(ids, list):
-            return Response({"detail": "ids must be a list."}, status=status.HTTP_400_BAD_REQUEST)
-        n = mark_seen(account_id_for_user(request.user), ids[:100])
-        return Response({"marked": n})
+            return bad_request("ids must be a list.")
+        return Response({"marked": mark_seen(current_account_id(request), ids[:100])})
 
 
-class NewPostsSince(APIView):
-    """Count of posts shared after the feed was opened, for the pill."""
-    permission_classes = (permissions.AllowAny,)
-
-    def get(self, request):
-        _, since = _feed_visit(request)
-        if since is None:
-            return Response({"detail": "Invalid seed."}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            viewer = account_id_for_user(request.user)
-        except Exception:
-            viewer = None
-        return Response(new_posts_since(viewer, since))
-
-class GetPostsByUser(APIView):
+class GetPostsByUser(APIView):  # a profile's posts, only the ones this viewer may see
     permission_classes = (permissions.AllowAny,)
 
     def get(self, request, account_id):
-        # Only the posts this viewer is allowed to see (friends / close
-        # friends / only me are filtered out for everyone else).
-        try:
-            limit = min(50, max(1, int(request.query_params.get("limit", 12))))
-        except ValueError:
-            limit = 12
-        return Response(posts_by_user(
-            account_id, request, viewer_account_id(request),
-            limit=limit, before=request.query_params.get("before"),
-        ))
+        limit = number_param(request, "limit", 12, 1, 50)
+        before = request.query_params.get("before")
+        return Response(posts_by_user(account_id, request, viewer_account_id(request), limit=limit, before=before))
+
+
+class GetPost(APIView):  # one post, for the shareable /post/<id> page
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request, post_id):
+        post = single_post(post_id, request, viewer_account_id(request))
+        if not post:
+            return not_found()
+        return Response(post)
+
 
 class CreatePost(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def post(self, request):
-        accID = current_account_id(request)  # ignore client-sent accID
-        # "public" | "friends" | "close_friends" | "only_me" (default public)
-        audience_key = str(request.data.get("audience") or "public")
-        if audience_key not in ("public", "friends", "close_friends", "only_me"):
-            audience_key = "public"
-        audience = audience_id(audience_key)
-        caption = request.data.get("caption")
-        # Photos: multipart files ("photos"), or legacy JSON [{origurl: dataURL}].
-        sources = request.FILES.getlist("photos") or [
-            (p or {}).get("origurl") for p in (request.data.get("photos") or [])
-            if isinstance(p, dict)
-        ]
-        if len(sources) > MAX_POST_PHOTOS:
-            return Response({"detail": f"Up to {MAX_POST_PHOTOS} photos per post."},
-                            status=status.HTTP_400_BAD_REQUEST)
         try:
-            photos = [read_image(src) for src in sources]
-        except MediaError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        taglist = request.data.get("taglist", [])
-        if isinstance(taglist, str):  # multipart sends JSON fields as strings
-            try:
-                taglist = json.loads(taglist)
-            except ValueError:
-                taglist = []
-        if not isinstance(taglist, list):
-            taglist = []
-        # #hashtags typed in the caption become tags too (prompt answers etc.)
-        found = re.findall(r"#(\w{2,50})", caption or "")
-        taglist = list(dict.fromkeys([str(t)[:50] for t in taglist] + found))[:10]
+            post = posting.publish(current_account_id(request), request)
+        except posting.PostError as e:
+            return bad_request(e)
+        return Response(post)
 
-        poll_in = request.data.get("poll")
-        if isinstance(poll_in, str):
-            try:
-                poll_in = json.loads(poll_in)
-            except ValueError:
-                poll_in = None
-        options = None
-        if poll_in:
-            try:
-                options = clean_options((poll_in or {}).get("options"))
-            except PollError as e:
-                return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-        data = create_post(accID, audience, caption, photos, taglist, request=request)
-        if isinstance(data, dict) and data.get("id"):
-            bump_explore()
-            notify_new_post(accID, audience_key)
-            data["audience"] = audience_key
-            data["poll"] = None
-            if options:
-                try:
-                    hours = int((poll_in or {}).get("hours") or 24)
-                except (TypeError, ValueError):
-                    hours = 24
-                create_poll(data["id"], options, hours)
-                data["poll"] = poll_data([data["id"]], accID).get(data["id"])
-        return Response(data)
-
-class PostDetail(APIView):
-    """PATCH: edit your own post's caption and/or audience.
-    DELETE: delete your own post (comments, glows, shares and photos go with it)."""
+class PostDetail(APIView):  # PATCH edits your post's caption or audience; DELETE removes it
     permission_classes = (permissions.IsAuthenticated,)
 
-    def _own_post(self, request, post_id):
-        from .models import Post
-        return Post.objects.filter(id=post_id, account_id=current_account_id(request)).first()
-
     def patch(self, request, post_id):
-        post = self._own_post(request, post_id)
+        post = find_own_post(post_id, current_account_id(request))
         if not post:
-            return Response({"detail": "Post not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        fields = []
-        if "caption" in request.data:
-            caption = str(request.data.get("caption") or "").strip()
-            if len(caption) > 800:
-                return Response({"detail": "Posts can be up to 800 characters."}, status=status.HTTP_400_BAD_REQUEST)
-            if not caption and not post.photo_set.exists():
-                return Response({"detail": "A post needs text or a photo."}, status=status.HTTP_400_BAD_REQUEST)
-            post.caption = caption
-            fields.append("caption")
-
-        audience_key = request.data.get("audience")
-        if audience_key is not None:
-            if audience_key not in ("public", "friends", "close_friends", "only_me"):
-                return Response({"detail": "Unknown audience."}, status=status.HTTP_400_BAD_REQUEST)
-            post.audience_id = audience_id(audience_key)
-            fields.append("audience")
-
-        if fields:
-            post.save(update_fields=fields)
-            bump_explore()
-        return Response({"id": post.id, "caption": post.caption, "audience": audience_key or None})
+            return not_found()
+        try:
+            return Response(posting.edit(post, request.data))
+        except posting.PostError as e:
+            return bad_request(e)
 
     def delete(self, request, post_id):
-        post = self._own_post(request, post_id)
-        if not post:
-            return Response({"detail": "Post not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        # Remove uploaded photo files (local disk or object storage; best effort).
-        for link in post.photo_set.values_list("link", flat=True):
-            delete_media(link)
-        post.delete()
-        bump_explore()
+        if not find_own_post(post_id, current_account_id(request)):
+            return not_found()
+        posting.remove(post_id)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -257,84 +129,47 @@ class SendGlow(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def post(self, request):
-        accID = current_account_id(request)  # ignore client-sent accID
-        postId = request.data.get("postId")
-        if not can_view_post(postId, accID):
-            return Response({"detail": "Post not found."}, status=status.HTTP_404_NOT_FOUND)
+        me = current_account_id(request)
+        post_id = as_id(request.data.get("postId"))
+        if not post_id or not can_view_post(post_id, me):
+            return not_found()
+        return Response(glow_post(me, post_id))
 
-        data = sendGlow(accID, postId)
-        return Response(data)
 
 class SendUnglow(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def post(self, request):
-        accID = current_account_id(request)  # ignore client-sent accID
-        postId = request.data.get("postId")
+        post_id = as_id(request.data.get("postId"))
+        if not post_id:
+            return not_found()
+        return Response(unglow_post(current_account_id(request), post_id))
 
-        data = sendUnglow(accID, postId)
-        return Response(data)
 
-# External Api
-class GetJokes(APIView):
+class VotePoll(APIView):  # POST {"option_id": n}; one vote per person
     permission_classes = (permissions.IsAuthenticated,)
 
-    def get(self, request):
-        data = getJokes()
-        return Response(data)
+    def post(self, request, post_id):
+        me = current_account_id(request)
+        if not can_view_post(post_id, me):
+            return not_found()
+        option_id = as_id(request.data.get("option_id"))
+        if not option_id:
+            return bad_request("Pick an option.")
+        try:
+            return Response(vote(post_id, option_id, me))
+        except PollError as e:
+            return bad_request(e)
 
 
-class GetUselessFacts(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
-
-    def get(self, request):
-        data = getUselessFacts()
-        return Response(data)
-
-
-class GetAdvice(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
-
-    def get(self, request):
-        data = getAdvice()
-        return Response(data)
-
-
-class GetQuotes(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
+class TodayPrompt(APIView):  # today's question or photo challenge
+    permission_classes = (permissions.AllowAny,)
 
     def get(self, request):
-        data = getQuotes()
-        return Response(data)
+        return Response(today_prompt())
 
 
-class GetRiddles(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
-
-    def get(self, request):
-        data = getRiddle()
-        return Response(data)
-
-
-class GetMemeFromReddit(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
-
-    def get(self, request):
-        data = getMemeFromReddit()
-        return Response(data)
-
-
-class GetRandomAnimeImage(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
-
-    def get(self, request):
-        data = getRandomAnimeImage()
-        return Response(data)
-
-
-class Explore(APIView):
-    """Trending posts, recent photos, popular tags and active people.
-    Built from Glow's own content; cached briefly."""
+class Explore(APIView):  # trending posts, photos, tags and people; or one tag's posts with ?tag=
     permission_classes = (permissions.AllowAny,)
 
     def get(self, request):
@@ -351,78 +186,29 @@ class Search(APIView):
         return Response(search(request.query_params.get("q", ""), request))
 
 
-class GetPost(APIView):
-    """A single post (for the shareable /post/<id> page)."""
-    permission_classes = (permissions.AllowAny,)
-
-    def get(self, request, post_id):
-        post = single_post(post_id, request, viewer_account_id(request))
-        if not post:
-            return Response({"detail": "Post not found."}, status=status.HTTP_404_NOT_FOUND)
-        return Response(post)
-
-
-
-def share_post_page(request, post_id):
-    """Link-preview page for a post.
-
-    Messenger/Facebook/Discord crawlers don't run JavaScript, so they can't
-    read the React app. This returns plain HTML with Open Graph tags for the
-    preview card, then sends real visitors on to the app's /post/<id> page.
-    """
-    from django.conf import settings
-    from django.http import HttpResponse, HttpResponseNotFound
-    from django.utils.html import escape
-
-    post = single_post(post_id, request)
-    frontend = getattr(settings, "FRONTEND_URL", "").rstrip("/")
-    target = f"{frontend}/post/{post_id}"
-    if not post:
-        return HttpResponseNotFound("Post not found")
-
-    who = post.get("username") or "someone"
-    caption = (post.get("caption") or "").strip()
-    title = f"@{who} on Glow"
-    description = (caption[:197] + "…") if len(caption) > 200 else (caption or "See this post on Glow")
-    image = (post.get("photos") or [""])[0]
-
-    tags = [
-        ("og:type", "article"),
-        ("og:site_name", "Glow"),
-        ("og:title", title),
-        ("og:description", description),
-        ("og:url", request.build_absolute_uri()),
-    ]
-    if image:
-        tags.append(("og:image", image))
-    meta = "\n".join(
-        f'<meta property="{k}" content="{escape(v)}">' for k, v in tags
-    )
-    html = f"""<!doctype html>
-<html lang="en"><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{escape(title)}</title>
-<meta name="description" content="{escape(description)}">
-{meta}
-<meta name="twitter:card" content="{'summary_large_image' if image else 'summary'}">
-<meta http-equiv="refresh" content="0; url={escape(target)}">
-<link rel="canonical" href="{escape(target)}">
-</head><body>
-<p><a href="{escape(target)}">Open this post on Glow</a></p>
-</body></html>"""
-    return HttpResponse(html)
-
-
-class LinkPreview(APIView):
-    """Open Graph card data for a link in a post caption."""
+class LinkPreview(APIView):  # title, image and site name for a link in a caption
     permission_classes = (permissions.AllowAny,)
 
     def get(self, request):
         url = (request.query_params.get("url") or "").strip()
         if not url or len(url) > 2048:
-            return Response({"detail": "url is required"}, status=status.HTTP_400_BAD_REQUEST)
-        data = get_link_preview(url)
-        if not data:
+            return bad_request("url is required")
+        preview = get_link_preview(url)
+        if not preview:
             return Response(status=status.HTTP_204_NO_CONTENT)
-        return Response(data)
+        return Response(preview)
+
+
+def share_post_page(request, post_id):  # the page link previews (Messenger, Facebook) read; people get redirected to the app
+    post = single_post(post_id, request)  # public posts only: crawlers aren't signed in
+    if not post:
+        return HttpResponseNotFound("Post not found")
+
+    caption = (post["caption"] or "").strip()
+    return render(request, "posts/share.html", {
+        "title": f"@{post['username'] or 'someone'} on Glow",
+        "description": caption[:197] + "…" if len(caption) > 200 else caption or "See this post on Glow",
+        "image": post["photos"][0] if post["photos"] else "",
+        "share_url": request.build_absolute_uri(),
+        "app_url": f"{settings.FRONTEND_URL.rstrip('/')}/post/{post_id}",
+    })

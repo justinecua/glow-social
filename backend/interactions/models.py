@@ -1,15 +1,15 @@
 from django.db import models
+
 from accounts.models import Account
-from posts.models import Post, Audience
+from posts.models import Audience, Post
+
 
 class Comment(models.Model):
     content = models.CharField(max_length=255, default="")
     dateTime = models.DateTimeField(auto_now_add=True, null=True)
     post = models.ForeignKey(Post, on_delete=models.CASCADE)
     account = models.ForeignKey(Account, on_delete=models.CASCADE)
-    # Replies point at a top-level comment. Threads are kept one level deep:
-    # replying to a reply attaches to the same top-level comment.
-    parent = models.ForeignKey(
+    parent = models.ForeignKey(  # replies point at a top-level comment; threads are one level deep
         "self",
         null=True,
         blank=True,
@@ -20,12 +20,12 @@ class Comment(models.Model):
 
     class Meta:
         indexes = [
-            # Feed affinity: "posts this viewer commented on lately".
-            models.Index(fields=["account", "dateTime"], name="comment_author_time_idx"),
+            models.Index(fields=["account", "dateTime"], name="comment_author_time_idx"),  # feed: what you commented on lately
         ]
 
     def __str__(self):
         return self.content
+
 
 class Glow(models.Model):
     account = models.ForeignKey(Account, null=True, on_delete=models.CASCADE)
@@ -37,12 +37,12 @@ class Glow(models.Model):
             models.UniqueConstraint(fields=["account", "post"], name="glow_one_per_account_post"),
         ]
         indexes = [
-            # Feed affinity: "posts this viewer glowed lately".
-            models.Index(fields=["account", "timestamp"], name="glow_author_time_idx"),
+            models.Index(fields=["account", "timestamp"], name="glow_author_time_idx"),  # feed: what you glowed lately
         ]
 
     def __str__(self):
-        return f"{self.account.firstname} reacted to {self.post.caption}"
+        return f"{self.account_id} glowed post {self.post_id}"
+
 
 class Share(models.Model):
     account = models.ForeignKey(Account, null=True, on_delete=models.CASCADE)
@@ -52,5 +52,4 @@ class Share(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True, null=True)
 
     def __str__(self):
-        return f"{self.account.firstname} shared {self.post.caption}"
-
+        return f"{self.account_id} shared post {self.post_id}"

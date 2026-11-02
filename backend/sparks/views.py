@@ -2,53 +2,43 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.auth_utils import account_id_for_user
+from accounts.auth_utils import current_account_id
 
 from . import services
-from .models import Spark
 from .services import SparkError
 
 
-def _me(request):
-    return account_id_for_user(request.user)
+def not_found():
+    return Response({"detail": "Spark not found."}, status=status.HTTP_404_NOT_FOUND)
 
 
-def _visible(request, spark_id):
-    spark = Spark.objects.filter(id=spark_id).first()
-    if not spark or not services.can_see(spark, _me(request)):
-        return None
-    return spark
-
-
-class Sparks(APIView):
-    """GET: your Today timeline. POST: share a spark."""
+class Sparks(APIView):  # GET your Today timeline, POST shares a spark
     permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request):
-        return Response(services.today(_me(request)))
+        return Response(services.today(current_account_id(request)))
 
     def post(self, request):
         try:
-            spark = services.create(_me(request), request.data, request=request)
+            spark_id = services.create(current_account_id(request), request.data)
         except SparkError as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response({"id": spark.id}, status=status.HTTP_201_CREATED)
+        return Response({"id": spark_id}, status=status.HTTP_201_CREATED)
 
 
-class SparkDetail(APIView):
-    """GET: viewers & warms (author only). DELETE: remove your spark."""
+class SparkDetail(APIView):  # GET viewers and warms (author only), DELETE removes your spark
     permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request, spark_id):
-        spark = Spark.objects.filter(id=spark_id, account_id=_me(request)).first()
+        spark = services.find_own_spark(spark_id, current_account_id(request))
         if not spark:
-            return Response({"detail": "Spark not found."}, status=status.HTTP_404_NOT_FOUND)
+            return not_found()
         return Response(services.stats(spark))
 
     def delete(self, request, spark_id):
-        spark = Spark.objects.filter(id=spark_id, account_id=_me(request)).first()
+        spark = services.find_own_spark(spark_id, current_account_id(request))
         if not spark:
-            return Response({"detail": "Spark not found."}, status=status.HTTP_404_NOT_FOUND)
+            return not_found()
         services.remove(spark)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -57,28 +47,30 @@ class ViewSpark(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def post(self, request, spark_id):
-        spark = _visible(request, spark_id)
+        me = current_account_id(request)
+        spark = services.find_visible_spark(spark_id, me)
         if not spark:
-            return Response({"detail": "Spark not found."}, status=status.HTTP_404_NOT_FOUND)
-        services.mark_viewed(spark, _me(request))
+            return not_found()
+        services.mark_viewed(spark, me)
         return Response({"ok": True})
 
 
-class WarmSpark(APIView):
+class WarmSpark(APIView):  # POST warms a spark, DELETE takes the warm back
     permission_classes = (permissions.IsAuthenticated,)
 
     def post(self, request, spark_id):
-        spark = _visible(request, spark_id)
+        me = current_account_id(request)
+        spark = services.find_visible_spark(spark_id, me)
         if not spark:
-            return Response({"detail": "Spark not found."}, status=status.HTTP_404_NOT_FOUND)
+            return not_found()
         try:
-            return Response({"warms": services.warm(spark, _me(request))})
+            return Response({"warms": services.warm(spark, me)})
         except SparkError as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, spark_id):
-        """Unspark: remove your reaction."""
-        spark = _visible(request, spark_id)
+        me = current_account_id(request)
+        spark = services.find_visible_spark(spark_id, me)
         if not spark:
-            return Response({"detail": "Spark not found."}, status=status.HTTP_404_NOT_FOUND)
-        return Response({"warms": services.unwarm(spark, _me(request))})
+            return not_found()
+        return Response({"warms": services.unwarm(spark, me)})

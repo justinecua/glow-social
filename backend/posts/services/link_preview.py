@@ -1,10 +1,3 @@
-"""Fetch Open Graph metadata for a URL so posts can show a link card.
-
-The server fetches arbitrary user-supplied URLs here, so it guards against
-SSRF: only http(s), every hop (including redirects) must resolve to public
-IP addresses, the body is size-capped, and results are cached.
-"""
-
 import hashlib
 import ipaddress
 import socket
@@ -22,7 +15,7 @@ IMAGE = object()  # sentinel: the URL itself is an image
 UA = "Mozilla/5.0 (compatible; GlowLinkPreview/1.0)"
 
 
-def _is_public_host(host):
+def _is_public_host(host):  # SSRF guard: user URLs must never reach our own network
     try:
         infos = socket.getaddrinfo(host, None)
     except (socket.gaierror, UnicodeError):
@@ -96,8 +89,7 @@ def _fetch_html(url):
     return None, url
 
 
-# Sites that don't serve metadata to servers but offer an official oEmbed API.
-OEMBED = {
+OEMBED = {  # sites that hide metadata from servers but offer an official oEmbed API
     "youtube.com": "https://www.youtube.com/oembed",
     "youtu.be": "https://www.youtube.com/oembed",
     "vimeo.com": "https://vimeo.com/api/oembed.json",
@@ -162,6 +154,5 @@ def get_link_preview(url):
     except (requests.RequestException, ValueError):
         data = None
 
-    # Cache misses too (as {}) so a dead link isn't refetched on every view.
-    cache.set(key, data or {}, CACHE_TTL if data else 60 * 30)
+    cache.set(key, data or {}, CACHE_TTL if data else 60 * 30)  # misses are cached too, so dead links aren't refetched
     return data

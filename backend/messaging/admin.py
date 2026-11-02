@@ -19,8 +19,7 @@ class ConversationAdmin(admin.ModelAdmin):
 
 @admin.register(Message)
 class MessageAdmin(admin.ModelAdmin):
-    # Moderation: admins can soft-delete reported messages.
-    list_display = ("id", "conversation", "sender", "created_at", "is_deleted")
+    list_display = ("id", "conversation", "sender", "created_at", "is_deleted")  # admins can soft-delete reported messages
     list_filter = ("is_deleted",)
     list_editable = ("is_deleted",)
     raw_id_fields = ("conversation", "sender")
