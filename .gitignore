@@ -30,8 +30,9 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 
-# Local Claude Code settings
+# Local Claude Code files
 .claude/settings.local.json
+CLAUDE.md
 
 # Local test credentials (contains passwords)
 test_accounts.txt
