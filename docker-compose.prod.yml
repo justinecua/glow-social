@@ -28,6 +28,7 @@ services:
       DB_USER: ${DB_USER:?set DB_USER}
       DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
       DB_CONN_MAX_AGE: "0"  # the database is shared with other apps, so don't hold idle connections
+      RUN_MIGRATIONS: "False"  # never migrate the live database on startup
       REDIS_HOST: redis
       REDIS_PORT: 6379
       NUM_PROXIES: "1"
