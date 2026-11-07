@@ -73,16 +73,18 @@ def create_post(account_id, audience_id, caption, photos, tags, request=None):  
 
     author = fetch_one(
         """
-        SELECT u.username, a.firstname, a.lastname, a.profile_photo
-        FROM glow.glow.accounts_account a
+        SELECT p.code, u.username, a.firstname, a.lastname, a.profile_photo
+        FROM glow.glow.posts_post p
+        JOIN glow.glow.accounts_account a ON a.id = p.account_id
         JOIN glow.glow.auth_user u ON u.id = a.auth_user_id
-        WHERE a.id = %s
+        WHERE p.id = %s
         """,
-        (account_id,),
+        (post_id,),
     )
     links = fetch_column("SELECT link FROM glow.glow.posts_photo WHERE post_id = %s ORDER BY id", (post_id,))
     return {  # same shape as a feed post, so the app can show it right away
         "id": post_id,
+        "code": author["code"],
         "account_id": account_id,
         "caption": caption,
         "dateTime": "• Just now",
@@ -157,6 +159,7 @@ DELETE_POST = [  # children before the post; foreign keys don't cascade
     "DELETE FROM glow.glow.interactions_glow WHERE post_id = %(p)s",
     "DELETE FROM glow.glow.interactions_share WHERE post_id = %(p)s",
     "DELETE FROM glow.glow.posts_postseen WHERE post_id = %(p)s",
+    "DELETE FROM glow.glow.posts_postreport WHERE post_id = %(p)s",
     "DELETE FROM glow.glow.posts_photo WHERE post_id = %(p)s",
     "DELETE FROM glow.glow.posts_video WHERE post_id = %(p)s",
     "DELETE FROM glow.glow.posts_tag_post WHERE post_id = %(p)s",

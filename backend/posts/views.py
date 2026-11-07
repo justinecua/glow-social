@@ -11,10 +11,11 @@ from rest_framework.views import APIView
 from accounts.auth_utils import current_account_id
 
 from . import posting
-from .discover import explore, feed, mark_seen, new_posts_since, posts_by_tag, posts_by_user, search, single_post
+from .discover import explore, feed, mark_seen, new_posts_since, post_by_code, posts_by_tag, posts_by_user, search
 from .polls import PollError, vote
 from .prompts import today_prompt
 from .queries import find_own_post, glow_post, unglow_post
+from .reports import ReportError, report_post
 from .services.link_preview import get_link_preview
 from .visibility import can_view_post, viewer_account_id
 
@@ -85,11 +86,11 @@ class GetPostsByUser(APIView):  # a profile's posts, only the ones this viewer m
         return Response(posts_by_user(account_id, request, viewer_account_id(request), limit=limit, before=before))
 
 
-class GetPost(APIView):  # one post, for the shareable /post/<id> page
+class GetPost(APIView):  # one post, for the shareable /post/<code> page
     permission_classes = (permissions.AllowAny,)
 
-    def get(self, request, post_id):
-        post = single_post(post_id, request, viewer_account_id(request))
+    def get(self, request, code):
+        post = post_by_code(code, request, viewer_account_id(request))
         if not post:
             return not_found()
         return Response(post)
@@ -122,6 +123,17 @@ class PostDetail(APIView):  # PATCH edits your post's caption or audience; DELET
         if not find_own_post(post_id, current_account_id(request)):
             return not_found()
         posting.remove(post_id)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ReportPost(APIView):  # flag a post for the owner to review
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request, post_id):
+        try:
+            report_post(current_account_id(request), post_id, request.data.get("reason"))
+        except ReportError as e:
+            return bad_request(e)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -199,8 +211,8 @@ class LinkPreview(APIView):  # title, image and site name for a link in a captio
         return Response(preview)
 
 
-def share_post_page(request, post_id):  # the page link previews (Messenger, Facebook) read; people get redirected to the app
-    post = single_post(post_id, request)  # public posts only: crawlers aren't signed in
+def share_post_page(request, code):  # the page link previews (Messenger, Facebook) read; people get redirected to the app
+    post = post_by_code(code, request)  # public posts only: crawlers aren't signed in
     if not post:
         return HttpResponseNotFound("Post not found")
 
@@ -210,5 +222,5 @@ def share_post_page(request, post_id):  # the page link previews (Messenger, Fac
         "description": caption[:197] + "…" if len(caption) > 200 else caption or "See this post on Glow",
         "image": post["photos"][0] if post["photos"] else "",
         "share_url": request.build_absolute_uri(),
-        "app_url": f"{settings.FRONTEND_URL.rstrip('/')}/post/{post_id}",
+        "app_url": f"{settings.FRONTEND_URL.rstrip('/')}/post/{post['code']}",
     })

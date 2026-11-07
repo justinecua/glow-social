@@ -15,6 +15,7 @@ import {
 } from "@/redux/services/sparks";
 import { useStoredUser } from "@/utils/auth";
 import { Avatar } from "@/features/discover/components/PersonRow";
+import { isExplicitPhoto } from "@/lib/nudity";
 
 const MAX_BYTES = 8 * 1024 * 1024;
 const ACCEPT = "image/jpeg,image/png,image/gif,image/webp";
@@ -50,6 +51,8 @@ const SparkComposer = ({ open, onOpenChange }) => {
       return toast.error("Use a JPG, PNG, GIF or WebP image.");
     if (file.size > MAX_BYTES)
       return toast.error("Photos must be 8 MB or smaller.");
+    if (await isExplicitPhoto(file))
+      return toast.error("This photo can't be posted on Glow.");
     setPhoto(file);
     setMode("photo");
   };

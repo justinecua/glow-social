@@ -48,7 +48,7 @@ urlpatterns = [
     path('api/sparks/', include('sparks.urls')),
     path('api/games/', include('games.urls')),
     # Link-preview pages for sharing (crawler-friendly HTML, then redirects)
-    path('share/post/<int:post_id>/', share_post_page, name='sharePost'),
+    path('share/post/<str:code>/', share_post_page, name='sharePost'),
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 ]
 

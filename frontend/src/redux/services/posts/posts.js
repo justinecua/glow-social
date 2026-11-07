@@ -112,6 +112,14 @@ export const receivedApi = api
           timeout,
         }),
       }),
+      reportPost: builder.mutation({
+        query: ({ post_id, reason }) => ({
+          url: `/posts/post/${post_id}/report/`,
+          method: "POST",
+          body: { reason },
+          timeout,
+        }),
+      }),
       sendGlow: builder.mutation({
         query: (body) => ({
           url: `/posts/sendGlow/`,
@@ -147,6 +155,7 @@ export const {
   useCreatePostMutation,
   useUpdatePostMutation,
   useDeletePostMutation,
+  useReportPostMutation,
   useSendGlowMutation,
   useSendunGlowMutation,
 } = receivedApi;

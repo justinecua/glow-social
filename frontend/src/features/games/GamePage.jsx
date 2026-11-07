@@ -118,10 +118,10 @@ const GamePage = () => {
 
   const back = (
     <Link
-      to={game?.post_id ? `/post/${game.post_id}` : "/"}
+      to={game?.post_code ? `/post/${game.post_code}` : "/"}
       className="mb-2 mt-6 inline-flex items-center gap-1 text-sm text-[var(--color-subtitle)] hover:text-[var(--title-color)]"
     >
-      <ArrowLeft className="h-4 w-4" /> {game?.post_id ? "Back to post" : "Home"}
+      <ArrowLeft className="h-4 w-4" /> {game?.post_code ? "Back to post" : "Home"}
     </Link>
   );
 
@@ -256,7 +256,7 @@ const GamePage = () => {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => shareLink(postShareUrl(game.post_id), game.title, `${game.title} · ${whenLabel(game)} · ${game.venue}`)}
+                onClick={() => shareLink(postShareUrl(game.post_code), game.title, `${game.title} · ${whenLabel(game)} · ${game.venue}`)}
                 className={`${linkBtn} flex-1 cursor-pointer justify-center`}
               >
                 <Share2 className="h-4 w-4" /> Share link

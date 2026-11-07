@@ -18,6 +18,9 @@ from urllib.parse import urlparse
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+from PIL import UnidentifiedImageError
+
+from .nudity import is_explicit
 
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
 
@@ -59,6 +62,12 @@ def read_image(source):
         raise MediaError("Photos must be 8 MB or smaller.")
     if not image_ext(data):
         raise MediaError("Use a JPG, PNG, GIF or WebP image.")
+    try:
+        explicit = is_explicit(data)
+    except (UnidentifiedImageError, OSError):  # header looked fine but the image is corrupt
+        raise MediaError("That photo couldn't be read.")
+    if explicit:
+        raise MediaError("This photo can't be posted on Glow.")
     return data
 
 

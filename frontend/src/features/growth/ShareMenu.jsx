@@ -11,7 +11,7 @@ const canNativeShare = typeof navigator !== "undefined" && !!navigator.share;
 /** Share button with a small menu: Copy link · Share via… · Open post. */
 const ShareMenu = ({ post }) => {
   const navigate = useNavigate();
-  const url = postShareUrl(post.id);
+  const url = postShareUrl(post.code);
 
   const nativeShare = async () => {
     try {
@@ -52,7 +52,7 @@ const ShareMenu = ({ post }) => {
             <Upload className="h-4 w-4" /> Share via…
           </DropdownMenu.Item>
         )}
-        <DropdownMenu.Item className={item} onSelect={() => navigate(`/post/${post.id}`)}>
+        <DropdownMenu.Item className={item} onSelect={() => navigate(`/post/${post.code}`)}>
           <ExternalLink className="h-4 w-4" /> Open post
         </DropdownMenu.Item>
       </DropdownMenu.Content>

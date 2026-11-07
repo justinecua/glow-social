@@ -16,6 +16,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Avatar } from "@/features/discover/components/PersonRow";
 import GameFields from "@/features/games/GameFields";
 import { blankGame, formToGame, gameFormReady } from "@/features/games/gameUtils";
+import { isExplicitPhoto } from "@/lib/nudity";
 
 const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
   const user = useStoredUser();
@@ -363,10 +364,13 @@ const CreatePostDialog = forwardRef(({ onPostCreated }, ref) => {
               accept="image/*"
               multiple
               hidden
-              onChange={(e) => {
+              onChange={async (e) => {
                 const files = Array.from(e.target.files ?? []);
-                setImages((prev) => [...prev, ...files]);
                 e.target.value = "";
+                const explicit = await Promise.all(files.map(isExplicitPhoto));
+                const allowed = files.filter((_, i) => !explicit[i]);
+                if (allowed.length < files.length) toast.error("This photo can't be posted on Glow.");
+                setImages((prev) => [...prev, ...allowed]);
               }}
             />
             <Image className="h-5 w-5" />

@@ -13,11 +13,11 @@ import { useGetPostQuery } from "@/redux/services/growth";
 import { useStoredUser } from "@/utils/auth";
 import { formatCount } from "@/lib/formatCount";
 
-/** /post/:id: where shared links land. */
+/** /post/:code: where shared links land. */
 const PostPage = () => {
-  const { id = "" } = useParams();
+  const { code = "" } = useParams();
   const user = useStoredUser();
-  const { data, isLoading, isError } = useGetPostQuery({ post_id: id });
+  const { data, isLoading, isError } = useGetPostQuery({ code });
   // Reflects edits from the ⋯ menu; becomes null once deleted here.
   const post = useLivePost(data);
   const [viewer, setViewer] = useState(null);
