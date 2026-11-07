@@ -19,6 +19,7 @@ import NoProfile from "@/assets/images/No-Profile.jpg";
 import { accounts, useUpdateMyProfileMutation } from "@/redux/services/accounts/accounts";
 import { setUser } from "@/redux/slices/authSlice";
 import { useStoredUser } from "@/utils/auth";
+import { isExplicitPhoto } from "@/lib/nudity";
 
 const MAX_BYTES = 8 * 1024 * 1024;
 const ACCEPT = "image/jpeg,image/png,image/gif,image/webp";
@@ -75,6 +76,10 @@ const EditProfileDialog = ({ open, onOpenChange, item, profileId }) => {
     }
     if (file.size > MAX_BYTES) {
       toast.error("Photos must be 8 MB or smaller.");
+      return;
+    }
+    if (await isExplicitPhoto(file)) {
+      toast.error("This photo can't be posted on Glow.");
       return;
     }
     set(await readAsDataUrl(file));

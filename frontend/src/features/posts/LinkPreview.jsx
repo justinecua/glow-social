@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useGetLinkPreviewQuery } from "@/redux/services/posts/posts";
 
 const IMAGE_EXT = /\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i;
+const YOUTUBE_PLAY = "glow:youtube-play"; // tells the other players on the page to stop
 
 const URL_RE = /https?:\/\/[^\s<>"']+[^\s<>"'.,;:!?)\]]/gi;
 
@@ -53,6 +54,20 @@ const youTubeId = (url) => {
 /** Thumbnail that turns into an inline player when tapped. */
 const YouTubeCard = ({ id, title }) => {
   const [playing, setPlaying] = useState(false);
+  const playerKey = useId();
+
+  useEffect(() => {
+    const stopIfOther = (e) => {
+      if (e.detail !== playerKey) setPlaying(false); // back to the thumbnail, which stops the video
+    };
+    window.addEventListener(YOUTUBE_PLAY, stopIfOther);
+    return () => window.removeEventListener(YOUTUBE_PLAY, stopIfOther);
+  }, [playerKey]);
+
+  const play = () => {
+    window.dispatchEvent(new CustomEvent(YOUTUBE_PLAY, { detail: playerKey }));
+    setPlaying(true);
+  };
 
   return (
     <div className="mt-3 overflow-hidden rounded-xl border bg-[var(--photo-bg)]">
@@ -71,7 +86,7 @@ const YouTubeCard = ({ id, title }) => {
             aria-label={`Play ${title || "video"}`}
             onClick={(e) => {
               e.stopPropagation();
-              setPlaying(true);
+              play();
             }}
             className="group absolute inset-0 cursor-pointer"
           >

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useDispatch } from "react-redux";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Check, Loader2, MoreHorizontal, Pencil, Trash2, X } from "lucide-react";
+import { Check, Flag, Loader2, MoreHorizontal, Pencil, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -15,23 +15,36 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { AUDIENCES } from "@/features/growth/audience";
-import { useDeletePostMutation, useUpdatePostMutation } from "@/redux/services/posts/posts";
+import {
+  useDeletePostMutation,
+  useReportPostMutation,
+  useUpdatePostMutation,
+} from "@/redux/services/posts/posts";
 import { postDeleted, postEdited } from "@/redux/slices/postEditsSlice";
 import { useStoredUser } from "@/utils/auth";
 
 const MAX = 800;
+const REPORT_REASONS = [
+  { key: "nudity", label: "Nudity or sexual content" },
+  { key: "harassment", label: "Harassment or bullying" },
+  { key: "violence", label: "Violence or threats" },
+  { key: "spam", label: "Spam or scam" },
+  { key: "other", label: "Something else" },
+];
 const menuItem =
   "flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-[var(--button-hover-bg-color)]";
 
-/** ⋯ on a post: Edit / Delete. Only shown to the post's author. */
+/** ⋯ on a post: Edit / Delete for the author, Report for everyone else signed in. */
 const PostMenu = ({ post }) => {
   const user = useStoredUser();
   const [editOpen, setEditOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const dispatch = useDispatch();
   const [deletePost, { isLoading: deleting }] = useDeletePostMutation();
 
-  if (!post?.id || !user?.user?.account_id || user.user.account_id !== post.account_id) return null;
+  if (!post?.id || !user?.user?.account_id) return null;
+  const isAuthor = user.user.account_id === post.account_id;
 
   const remove = async () => {
     try {
@@ -65,19 +78,28 @@ const PostMenu = ({ post }) => {
           collisionPadding={8}
           className="z-[300] min-w-[150px] rounded-lg border bg-[var(--home-card)] p-1 shadow-lg"
         >
-          <DropdownMenu.Item className={menuItem} onSelect={() => setEditOpen(true)}>
-            <Pencil className="h-3.5 w-3.5" /> Edit post
-          </DropdownMenu.Item>
-          <DropdownMenu.Item
-            className={`${menuItem} text-red-500`}
-            onSelect={() => setConfirmOpen(true)}
-          >
-            <Trash2 className="h-3.5 w-3.5" /> Delete post
-          </DropdownMenu.Item>
+          {isAuthor ? (
+            <>
+              <DropdownMenu.Item className={menuItem} onSelect={() => setEditOpen(true)}>
+                <Pencil className="h-3.5 w-3.5" /> Edit post
+              </DropdownMenu.Item>
+              <DropdownMenu.Item
+                className={`${menuItem} text-red-500`}
+                onSelect={() => setConfirmOpen(true)}
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete post
+              </DropdownMenu.Item>
+            </>
+          ) : (
+            <DropdownMenu.Item className={menuItem} onSelect={() => setReportOpen(true)}>
+              <Flag className="h-3.5 w-3.5" /> Report post
+            </DropdownMenu.Item>
+          )}
         </DropdownMenu.Content>
       </DropdownMenu.Root>
 
       {editOpen && <EditPostDialog post={post} onClose={() => setEditOpen(false)} />}
+      {reportOpen && <ReportPostDialog post={post} onClose={() => setReportOpen(false)} />}
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent className="bg-[var(--home-card)]">
@@ -244,6 +266,79 @@ const EditPostDialog = ({ post, onClose }) => {
             className="flex min-w-20 cursor-pointer items-center justify-center rounded-full bg-[var(--button-color-bg)] px-5 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+/** Pick a reason and send the report. The owner reviews reports on the server. */
+const ReportPostDialog = ({ post, onClose }) => {
+  const [reportPost, { isLoading: sending }] = useReportPostMutation();
+  const [reason, setReason] = useState("");
+
+  const send = async () => {
+    if (!reason || sending) return;
+    try {
+      await reportPost({ post_id: post.id, reason }).unwrap();
+      toast.success("Thanks. We'll review this post.");
+      onClose();
+    } catch (err) {
+      toast.error(err?.data?.detail || "Couldn't send the report.");
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent
+        showCloseButton={false}
+        className="w-[95%] max-w-[95vw] gap-0 rounded-2xl bg-[var(--home-card)] p-0 sm:w-[420px] sm:max-w-[420px]"
+      >
+        <DialogTitle className="px-5 pt-4 text-base font-semibold">Report post</DialogTitle>
+        <p className="px-5 pt-1 text-sm text-[var(--color-subtitle)]">
+          Why are you reporting this? The author won't know it was you.
+        </p>
+
+        <div className="flex flex-col gap-1 px-3 py-3" role="radiogroup" aria-label="Reason">
+          {REPORT_REASONS.map((r) => {
+            const active = r.key === reason;
+            return (
+              <button
+                key={r.key}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => setReason(r.key)}
+                className={`flex cursor-pointer items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
+                  active
+                    ? "bg-[color-mix(in_srgb,var(--button-color-bg)_15%,transparent)] font-medium"
+                    : "hover:bg-[var(--button-hover-bg-color)]"
+                }`}
+              >
+                {r.label}
+                {active && <Check className="h-4 w-4" />}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 border-t px-4 py-2.5">
+          <DialogClose asChild>
+            <button
+              type="button"
+              className="cursor-pointer rounded-full px-4 py-2 text-sm font-medium hover:bg-[var(--button-hover-bg-color)]"
+            >
+              Cancel
+            </button>
+          </DialogClose>
+          <button
+            type="button"
+            onClick={send}
+            disabled={!reason || sending}
+            className="flex min-w-20 cursor-pointer items-center justify-center rounded-full bg-[var(--button-color-bg)] px-5 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send"}
           </button>
         </div>
       </DialogContent>

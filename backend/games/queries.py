@@ -32,6 +32,7 @@ GAME_COLUMNS = f"""
     g.id, g.post_id, g.host_id, g.title, g.venue, g.starts_at, g.ends_at, g.level_min, g.level_max,
     g.capacity, g.courts, g.court_url, g.maps_url, g.court_booked, g.notes, g.created_at,
     {PERSON_JSON} AS host,
+    (SELECT code FROM glow.glow.posts_post WHERE id = g.post_id) AS post_code,
     (SELECT COUNT(*) FROM glow.glow.games_playsessionplayer p
      WHERE p.session_id = g.id AND p.status = 'joined') AS joined_count,
     (SELECT COUNT(*) FROM glow.glow.games_playsessionplayer p
@@ -59,6 +60,7 @@ def serialize(row, me):
     return {
         "id": row["id"],
         "post_id": row["post_id"],
+        "post_code": row["post_code"],
         "title": row["title"],
         "venue": row["venue"],
         "starts_at": iso(row["starts_at"]),
