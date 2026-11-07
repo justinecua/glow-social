@@ -48,3 +48,8 @@ zope.interface==7.2
 gunicorn==23.0.0
 django-storages[s3]==1.14.4
 boto3==1.35.99
+nudenet==3.4.2
+onnxruntime==1.31.1
+opencv-python-headless==5.0.0.93
+numpy==2.5.4
+Pillow==13.0.0

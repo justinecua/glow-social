@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta
 
 import pytz
@@ -12,11 +13,13 @@ from .queries import time_ago
 from .visibility import audience_ids, visible_sql
 
 EXPLORE_CACHE_SECONDS = 120
+POST_CODE = re.compile(r"[A-Za-z0-9_-]{11}")  # the shape of posts_post.code
 
 def post_select(viewer):  # one row per post: counts from stored columns, photos via subquery, no row blow-up
     return f"""
     SELECT
         p.id,
+        p.code,
         p.account_id,
         p.caption,
         p."dateTime",
@@ -432,8 +435,10 @@ def new_posts_since(viewer_id, since, limit_authors=3):  # how many posts the vi
     return {"count": count, "authors": authors}
 
 
-def single_post(post_id, request, viewer_id=None):
-    posts = find_posts("WHERE p.id = %s", (post_id,), limit=1, request=request, viewer_id=viewer_id)
+def post_by_code(code, request, viewer_id=None):
+    if not POST_CODE.fullmatch(str(code)):
+        return None
+    posts = find_posts("WHERE p.code = %s", (code,), limit=1, request=request, viewer_id=viewer_id)
     return posts[0] if posts else None
 
 

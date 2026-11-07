@@ -70,7 +70,7 @@ function App() {
             <Route path="/search" element={<SearchPage />} />
             <Route path="/friends" element={<FriendsPage />} />
             <Route path="/invite/:username" element={<InvitePage />} />
-            <Route path="/post/:id" element={<PostPage />} />
+            <Route path="/post/:code" element={<PostPage />} />
             <Route path="/messages" element={<MessagesPage />} />
             <Route path="/messages/:id" element={<MessagesPage />} />
             <Route path="/games/:id" element={<GamePage />} />

@@ -2,7 +2,7 @@ import { toast } from "sonner";
 import { API_HOST } from "@/utils/constants";
 
 /** Link with a preview card (served by the backend, then redirects to the app). */
-export const postShareUrl = (postId) => `${API_HOST}/share/post/${postId}/`;
+export const postShareUrl = (code) => `${API_HOST}/share/post/${code}/`;
 
 export const inviteUrl = (username) =>
   `${window.location.origin}/invite/${encodeURIComponent(username)}`;

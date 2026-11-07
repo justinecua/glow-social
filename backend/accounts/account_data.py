@@ -45,7 +45,7 @@ def export_user_data(user):  # GDPR / Data Privacy Act access request
     data["profile"] = iso_dates([profile])[0]
     data["posts"] = rows(
         """
-        SELECT p.id, p.caption, p."dateTime" AS created_at,
+        SELECT p.id, p.code, p.caption, p."dateTime" AS created_at,
                ARRAY(SELECT ph.link FROM glow.glow.posts_photo ph WHERE ph.post_id = p.id ORDER BY ph.id) AS photos
         FROM glow.glow.posts_post p
         WHERE p.account_id = %(a)s
@@ -64,6 +64,10 @@ def export_user_data(user):  # GDPR / Data Privacy Act access request
     )
     data["glows"] = rows(
         "SELECT post_id, timestamp AS created_at FROM glow.glow.interactions_glow WHERE account_id = %(a)s",
+        a,
+    )
+    data["reports"] = rows(
+        "SELECT post_id, reason, created_at FROM glow.glow.posts_postreport WHERE reporter_id = %(a)s",
         a,
     )
     data["shares"] = rows(
@@ -212,6 +216,7 @@ DELETE_ACCOUNT = [  # children before parents; FKs are NO ACTION so a missed tab
     f"DELETE FROM glow.glow.interactions_glow WHERE account_id = %(a)s OR post_id IN {MY_POSTS}",
     f"DELETE FROM glow.glow.interactions_share WHERE account_id = %(a)s OR post_id IN {MY_POSTS}",
     f"DELETE FROM glow.glow.posts_postseen WHERE account_id = %(a)s OR post_id IN {MY_POSTS}",
+    f"DELETE FROM glow.glow.posts_postreport WHERE reporter_id = %(a)s OR post_id IN {MY_POSTS}",
     f"DELETE FROM glow.glow.posts_photo WHERE post_id IN {MY_POSTS}",
     f"DELETE FROM glow.glow.posts_video WHERE post_id IN {MY_POSTS}",
     f"DELETE FROM glow.glow.posts_tag_post WHERE post_id IN {MY_POSTS}",

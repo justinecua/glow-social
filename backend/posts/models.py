@@ -20,6 +20,7 @@ class Post(models.Model):
     dateTime = models.DateTimeField(auto_now_add=True, null=True)
     glow_count = models.PositiveIntegerField(default=0)  # kept in sync by database triggers (migration 0011)
     comment_count = models.PositiveIntegerField(default=0)  # `manage.py recount_posts` repairs any drift
+    code = models.CharField(max_length=11, unique=True, editable=False)  # public id for links, like YouTube's; the database fills it (migration 0014)
 
     class Meta:
         indexes = [
@@ -98,3 +99,13 @@ class PollVote(models.Model):
 
     class Meta:
         unique_together = ("poll", "account")
+
+
+class PostReport(models.Model):  # someone flagged a post; the owner reviews with `manage.py reports`
+    post = models.ForeignKey(Post, on_delete=models.CASCADE)
+    reporter = models.ForeignKey(Account, on_delete=models.CASCADE)
+    reason = models.CharField(max_length=20)  # one of posts.reports.REASONS
+    created_at = models.DateTimeField()
+
+    class Meta:
+        unique_together = ("post", "reporter")  # one report per person per post

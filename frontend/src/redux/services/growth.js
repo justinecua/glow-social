@@ -47,7 +47,7 @@ export const growthApi = api
         providesTags: ["Onboarding"],
       }),
       getPost: builder.query({
-        query: ({ post_id }) => ({ url: `posts/post/${post_id}/`, timeout }),
+        query: ({ code }) => ({ url: `posts/post/${encodeURIComponent(code)}/`, timeout }),
       }),
     }),
   });
